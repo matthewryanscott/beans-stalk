@@ -23,7 +23,8 @@ def compute_layout(
     if len(subgraph) == 0:
         return {}
     pos = nx.drawing.nx_agraph.graphviz_layout(subgraph, prog="dot")
-    return {node_id: (float(x), float(y)) for node_id, (x, y) in pos.items()}
+    # Graphviz Y-axis is bottom-up (math coords), Qt is top-down (screen coords) — flip Y
+    return {node_id: (float(x), -float(y)) for node_id, (x, y) in pos.items()}
 
 
 def stabilize_layout(
