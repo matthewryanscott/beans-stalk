@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "beans-stalk"
+version = "0.1.0"
+description = "Visual DAG companion for the Beans task tracker"
+requires-python = ">=3.14"
+dependencies = [
+    "pyside6",
+    "magic-beans",
+    "networkx",
+    "pygraphviz",
+    "watchdog",
+    "tomli-w",
+    "typer",
+]
+
+[project.scripts]
+stalk = "beans_stalk.main:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-qt",
+]
