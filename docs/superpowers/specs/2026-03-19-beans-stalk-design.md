@@ -26,7 +26,7 @@ Layered architecture with clear boundaries:
 │  scenes      │  layout      │  watcher           │
 │  interaction │  computation │  config             │
 ├──────────────┴──────────────┴───────────────────┤
-│              beans (upstream dependency)          │
+│         magic-beans (upstream dependency)         │
 │         models, store, api, journal              │
 └─────────────────────────────────────────────────┘
 ```
@@ -50,7 +50,7 @@ beans-stalk/
 │       ├── config.py            # beans-stalk.toml read/write
 │       ├── data/
 │       │   ├── __init__.py
-│       │   ├── store.py         # Wraps beans.store + beans.api for reads and writes
+│       │   ├── store.py         # Wraps beans.store.Store + beans.api for reads and writes
 │       │   └── watcher.py       # Hybrid file-watch + poll, emits change signals
 │       ├── graph/
 │       │   ├── __init__.py
@@ -73,10 +73,17 @@ Uses `beans.models.Bean` and `beans.models.Dep` directly — no duplicate models
 
 ### Store (`data/store.py`)
 
-Thin wrapper around beans' own stores:
-- Uses `beans.store.BeanStore` and `beans.store.DepStore` for reads
-- Uses `beans.api` for all writes: create, update, close, claim, release, add/remove dep
+Thin wrapper around beans' composite `Store`:
+- Uses `beans.store.Store` (via `Store.from_path()`) for both reads and writes
+- Uses `beans.api` functions (which accept `Store`) for all mutations: create, update, close, claim, release, add/remove dep
 - Beans API handles journal entries, validation, and business rules automatically
+
+### SQLite Concurrency
+
+Both the CLI and the GUI may hold open connections to the same `beans.db` simultaneously:
+- The schema already uses WAL mode (`PRAGMA journal_mode=WAL`), which allows concurrent readers + one writer
+- The GUI's `Store` connection sets `PRAGMA busy_timeout=5000` to wait gracefully if the CLI is mid-write
+- Watchdog callbacks run on a background thread and never touch the `Store` connection directly — they only emit a Qt signal to the main thread, which then queries the DB
 
 ### Watcher (`data/watcher.py`)
 
@@ -84,8 +91,9 @@ Hybrid change detection:
 - **Watchdog observer** on the DB file + WAL file triggers an immediate poll
 - **Fallback QTimer** at configurable interval (default 2 seconds)
 - **Debounce:** coalesce filesystem events within ~200ms before polling
-- **Poll logic:** `SELECT MAX(id) FROM journal` — if changed since last check, reload data
-- **Output:** emits a Qt signal (`snapshot_changed`) with fresh beans and deps from beans' stores
+- **Poll logic:** `PRAGMA data_version` as the primary change-detection signal — this is incremented by SQLite on any write, regardless of whether it came through the beans API or direct SQL. Cheaper than re-querying all data and catches all sources of change.
+- **On change detected:** reload full state from beans' `Store` (all beans + all deps)
+- **Output:** emits a Qt signal (`snapshot_changed`) with fresh beans and deps
 
 ## Graph Layer (`graph/layout.py`)
 
@@ -93,7 +101,7 @@ Pure computation, no Qt dependency:
 
 - `build_dag(beans, deps) → nx.DiGraph`: constructs directed graph, nodes carry bean data as attributes, edges carry dep_type
 - `compute_layout(graph, visible_ids) → dict[str, tuple[float, float]]`: runs layered layout on subgraph of visible nodes
-- **Layout algorithm:** `graphviz_layout(graph, prog="dot")` for clean top-to-bottom DAG layering; falls back to `nx.spring_layout` if graphviz unavailable
+- **Layout algorithm:** `graphviz_layout(graph, prog="dot")` for clean top-to-bottom DAG layering. Graphviz (`brew install graphviz`) is a hard requirement — `spring_layout` produces poor results for DAGs with no concept of hierarchy.
 - **Visibility filtering:** accepts a set of visible bean IDs; completed beans excluded before layout unless within fade window or "show completed" is on
 
 ### Layout Stability
@@ -111,29 +119,31 @@ Pure computation, no Qt dependency:
 One window per opened beans dir:
 - `QMainWindow` with **user-adjustable** horizontal splitter: DAG view (left, stretches) + sidebar (right, initial default ~300px)
 - **Menu bar:**
-  - File: Open beans dir, Close window, Quit
-  - View: Toggle completed beans, Toggle stay-on-top
-  - Edit: New bean
+  - File: Open beans dir, Close window (Cmd-W), Quit (Cmd-Q)
+  - View: Toggle completed beans, Toggle stay-on-top (Cmd-T)
+  - Edit: New bean (Cmd-N)
 - **Stay-on-top:** toggles `Qt.WindowType.WindowStaysOnTopHint` + `.show()`, per-window, not persisted
 - **Title bar:** shows the beans dir path
 - Owns a `DataWatcher` instance for its beans dir
 - Connects watcher → layout → scene update pipeline
+- **Empty state:** when the DB has zero beans, show a placeholder message in the DAG view ("No beans yet — create one with Cmd-N or right-click")
 
 ### DAG View (`ui/dag_view.py`)
 
 `QGraphicsView` subclass:
 - **Drag** to pan viewport
 - **Scroll wheel / pinch** to zoom
-- **Shift-drag** from node A to node B: creates A-blocks-B dependency if none exists, removes it if it does
+- **Shift-drag** from node A to node B: toggles "blocks" dependency (creates A-blocks-B if no "blocks" dep exists between them, removes it if one does). Other dep types are unaffected.
 - **Shift-click** on an edge: removes that dependency
 - **Click** on a node: selects it, shows in sidebar
+- **Escape** to deselect current node
 - Tracks selected node ID for layout anchoring
 
 ### DAG Scene (`ui/dag_scene.py`)
 
 `QGraphicsScene`:
 - Manages collection of `BeanNode` and `DepEdge` items
-- `update_from_snapshot(beans, deps, positions, old_positions)`: diffs current items, adds/removes as needed, animates position changes via `QPropertyAnimation`
+- `update_from_snapshot(beans, deps, positions, old_positions)`: diffs current items, adds/removes as needed, animates position changes via `QPropertyAnimation` (300ms, `InOutCubic` easing)
 - Handles "recently closed" display: nodes for beans closed within the fade window rendered at muted opacity
 
 ### Bean Node (`ui/bean_node.py`)
@@ -170,11 +180,12 @@ One window per opened beans dir:
 - **New Bean mode:** blank form, optional pre-filled parent/dependency from context menu
 - **Close Bean button:** with optional reason field
 - **Assignee color:** editable from sidebar when a bean with that assignee is selected
+- **Error handling:** API call failures (e.g. bean already claimed, bean deleted between render and click) shown as inline status messages in the sidebar
 
 ### New Bean Creation
 
 Two entry points:
-- **"New Bean" button/menu/shortcut:** opens blank editor in sidebar
+- **"New Bean" button/menu/shortcut (Cmd-N):** opens blank editor in sidebar
 - **Context menu on DAG nodes:** right-click a node to create a child or a bean that depends on / is blocked by that node. Pre-fills the relationship.
 
 ## Application Lifecycle & IPC
@@ -188,7 +199,8 @@ stalk [path-to-beans-dir]
 1. Parse args with typer. If path omitted, discover `.beans/` by walking up from cwd.
 2. Attempt to connect to Unix domain socket at `~/.beans-stalk.sock`:
    - **Connection succeeds:** send beans dir path, exit. Running instance opens/focuses that window.
-   - **Connection fails:** first instance. Launch the app.
+   - **Connection fails but socket file exists:** stale socket from a crash — unlink it, then proceed as first instance.
+   - **Connection fails, no socket file:** first instance. Launch the app.
 
 ### App Lifecycle (`app.py`)
 
@@ -201,7 +213,7 @@ stalk [path-to-beans-dir]
 
 ## Configuration (`config.py`)
 
-Per-beans-dir config in `beans-stalk.toml`, stored alongside `beans.db`:
+Per-beans-dir config in `.beans/beans-stalk.toml` (intentionally git-ignored by beans' `.gitignore` — this is user-local config):
 
 ```toml
 fade_minutes = 5
@@ -237,18 +249,22 @@ stalk = "beans_stalk.main:app"
 
 dependencies = [
     "pyside6",
-    "beans",           # upstream, local/editable install
+    "magic-beans",     # upstream beans package (PyPI name)
     "networkx",
+    "pygraphviz",      # graphviz layout (requires: brew install graphviz)
     "watchdog",
     "tomli-w",         # TOML writing (stdlib tomllib handles reading)
     "typer",
 ]
-
-[project.optional-dependencies]
-graphviz = ["pygraphviz"]  # for dot layout; falls back to spring_layout
 ```
 
 **No qasync needed** — no async HTTP. Watchdog threading bridges to Qt main thread via signals. Poll timer is a plain `QTimer`.
+
+## Testing Strategy
+
+- `data/` and `graph/` layers have zero Qt imports — tested with plain pytest
+- `ui/` layer tested with `pytest-qt` for integration tests
+- Data layer tests can use in-memory SQLite via beans' own test patterns
 
 ## Interaction Summary
 
@@ -257,8 +273,11 @@ graphviz = ["pygraphviz"]  # for dot layout; falls back to spring_layout
 | Click node | Select, show in sidebar |
 | Drag canvas | Pan viewport |
 | Scroll / pinch | Zoom |
-| Shift-drag node→node | Toggle dependency (add if absent, remove if present) |
+| Shift-drag node→node | Toggle "blocks" dependency (add if absent, remove if present) |
 | Shift-click edge | Remove dependency |
 | Right-click node | Context menu: new child, new blocker, new blocked-by |
 | Right-click canvas | Context menu: new bean |
+| Cmd-N | New bean |
 | Cmd-T | Toggle stay-on-top |
+| Cmd-W | Close window |
+| Escape | Deselect current node |
