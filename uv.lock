@@ -34,7 +34,7 @@ dependencies = [
     { name = "watchdog" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "pytest" },
     { name = "pytest-qt" },
@@ -46,13 +46,16 @@ requires-dist = [
     { name = "networkx" },
     { name = "pygraphviz" },
     { name = "pyside6" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "pytest-qt", marker = "extra == 'dev'" },
     { name = "tomli-w" },
     { name = "typer" },
     { name = "watchdog" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-qt" },
+]
 
 [[package]]
 name = "click"

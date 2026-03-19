@@ -20,7 +20,7 @@ dependencies = [
 [project.scripts]
 stalk = "beans_stalk.main:app"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest",
     "pytest-qt",
