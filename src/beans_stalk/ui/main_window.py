@@ -89,6 +89,7 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu("View")
         self._toggle_completed_action = QAction("Show completed beans", self)
         self._toggle_completed_action.setCheckable(True)
+        self._toggle_completed_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
         self._toggle_completed_action.triggered.connect(self._on_toggle_completed)
         view_menu.addAction(self._toggle_completed_action)
         self._toggle_on_top_action = QAction("Always on top", self)
