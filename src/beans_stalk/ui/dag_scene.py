@@ -15,6 +15,7 @@ ANIMATION_DURATION_MS = 300
 
 class DagScene(QGraphicsScene):
     node_clicked = Signal(str)
+    navigate_requested = Signal(object)
     dep_toggle_requested = Signal(str, str)
     dep_remove_requested = Signal(str, str)
 
@@ -28,6 +29,16 @@ class DagScene(QGraphicsScene):
         self._show_completed = False
         self._fade_minutes = config.fade_minutes
         self._placeholder: QGraphicsTextItem | None = None
+        self._current_parent_id: str | None = None
+        self._parent_ids: set[str] = set()
+
+    @property
+    def current_parent_id(self) -> str | None:
+        return self._current_parent_id
+
+    @current_parent_id.setter
+    def current_parent_id(self, value: str | None):
+        self._current_parent_id = value
 
     @property
     def selected_id(self) -> str | None:
@@ -66,16 +77,57 @@ class DagScene(QGraphicsScene):
     def update_snapshot(self, beans: list[Bean], deps: list[Dep]):
         now = datetime.now(timezone.utc)
 
-        # Determine visible beans
-        visible_beans: dict[str, tuple[Bean, bool]] = {}
+        # Index all beans by id
+        all_beans: dict[str, Bean] = {bean.id: bean for bean in beans}
+
+        # Precompute parent_ids (beans that have children)
+        self._parent_ids = set()
         for bean in beans:
+            if bean.parent_id is not None:
+                self._parent_ids.add(bean.parent_id)
+
+        # Precompute active ancestors: walk up from in_progress+assigned beans
+        active_ancestors: set[str] = set()
+        for bean in beans:
+            if bean.status == "in_progress" and bean.assignee is not None:
+                # Walk up parent chain
+                cur = bean.parent_id
+                while cur is not None:
+                    if cur in active_ancestors:
+                        break
+                    active_ancestors.add(cur)
+                    parent_bean = all_beans.get(cur)
+                    cur = parent_bean.parent_id if parent_bean else None
+
+        # Filter beans at the current level (parent_id == current_parent_id)
+        level_beans: dict[str, Bean] = {}
+        for bean in beans:
+            if bean.parent_id == self._current_parent_id:
+                level_beans[bean.id] = bean
+
+        # Find ghost IDs: direct deps from/to level beans that aren't in level beans
+        ghost_ids: set[str] = set()
+        for dep in deps:
+            if dep.from_id in level_beans and dep.to_id not in level_beans and dep.to_id in all_beans:
+                ghost_ids.add(dep.to_id)
+            if dep.to_id in level_beans and dep.from_id not in level_beans and dep.from_id in all_beans:
+                ghost_ids.add(dep.from_id)
+
+        # Also include edges between ghosts (if both endpoints are ghosts)
+        # These are deps where both from and to are in ghost_ids
+
+        # Build visible_beans from level_beans + ghost beans, applying closed filtering
+        visible_beans: dict[str, tuple[Bean, bool]] = {}
+        candidate_ids = set(level_beans.keys()) | ghost_ids
+        for bean_id in candidate_ids:
+            bean = all_beans[bean_id]
             if bean.status == "closed":
                 if self._show_completed:
-                    visible_beans[bean.id] = (bean, True)
+                    visible_beans[bean_id] = (bean, True)
                 elif bean.closed_at and self._is_recently_closed(bean.closed_at, now):
-                    visible_beans[bean.id] = (bean, True)
+                    visible_beans[bean_id] = (bean, True)
             else:
-                visible_beans[bean.id] = (bean, False)
+                visible_beans[bean_id] = (bean, False)
 
         # Precompute node sizes for layout spacing
         node_sizes = {
@@ -91,7 +143,10 @@ class DagScene(QGraphicsScene):
 
         # Placeholder
         if not visible_beans:
-            self._show_placeholder()
+            if self._current_parent_id is not None:
+                self._show_placeholder("All children are closed")
+            else:
+                self._show_placeholder()
         else:
             self._hide_placeholder()
 
@@ -113,6 +168,12 @@ class DagScene(QGraphicsScene):
                 node.clicked.connect(self._on_node_clicked)
                 self._nodes[bean_id] = node
                 self.addItem(node)
+
+            node.ghost = (bean_id in ghost_ids)
+            node.pulsing = (
+                (bean.status == "in_progress" and bean.assignee is not None)
+                or bean_id in active_ancestors
+            )
 
             if bean_id in new_positions:
                 target = QPointF(*new_positions[bean_id])
@@ -200,12 +261,10 @@ class DagScene(QGraphicsScene):
         self.selected_id = bean_id
         self.node_clicked.emit(bean_id)
 
-    def _show_placeholder(self):
+    def _show_placeholder(self, message="No beans yet \u2014 create one with Cmd-N or right-click"):
         if self._placeholder is not None:
-            return
-        self._placeholder = QGraphicsTextItem(
-            "No beans yet \u2014 create one with Cmd-N or right-click"
-        )
+            self.removeItem(self._placeholder)
+        self._placeholder = QGraphicsTextItem(message)
         self._placeholder.setDefaultTextColor(QColor("#888888"))
         self._placeholder.setFont(QFont("system-ui", 14))
         self.addItem(self._placeholder)
