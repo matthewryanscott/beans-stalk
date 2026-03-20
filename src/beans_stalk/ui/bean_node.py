@@ -72,8 +72,10 @@ class BeanNode(QGraphicsObject):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(QRectF(1, 1, NODE_WIDTH - 2, NODE_HEIGHT - 2), CORNER_RADIUS, CORNER_RADIUS)
 
-        # Use original color lightness (not muted/hovered version) for contrast decision
-        text_color = Qt.GlobalColor.white if self._color.lightnessF() < 0.6 else Qt.GlobalColor.black
+        # Use perceived luminance for contrast — white text on dark, black on light
+        r, g, b = self._color.redF(), self._color.greenF(), self._color.blueF()
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        text_color = Qt.GlobalColor.black if luminance > 0.55 else Qt.GlobalColor.white
         if self._muted:
             tc = QColor(text_color)
             tc.setAlphaF(0.5)
