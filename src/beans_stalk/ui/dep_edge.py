@@ -1,7 +1,6 @@
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QPainter, QPainterPath, QPainterPathStroker, QPen, QColor, QPolygonF
 from PySide6.QtWidgets import QGraphicsPathItem
-from beans_stalk.ui.bean_node import NODE_WIDTH, NODE_HEIGHT
 
 ARROW_SIZE = 8
 EDGE_COLOR = "#aaaaaa"
@@ -18,9 +17,13 @@ class DepEdge(QGraphicsPathItem):
         self.setAcceptHoverEvents(True)
         self.setZValue(-1)
 
-    def update_path(self, from_pos: QPointF, to_pos: QPointF):
-        start = QPointF(from_pos.x() + NODE_WIDTH / 2, from_pos.y() + NODE_HEIGHT)
-        end = QPointF(to_pos.x() + NODE_WIDTH / 2, to_pos.y())
+    def update_path(self, from_pos: QPointF, from_size: tuple[float, float],
+                    to_pos: QPointF, to_size: tuple[float, float]):
+        """Update bezier path. Positions are top-left; sizes are (width, height)."""
+        from_w, from_h = from_size
+        to_w, _ = to_size
+        start = QPointF(from_pos.x() + from_w / 2, from_pos.y() + from_h)
+        end = QPointF(to_pos.x() + to_w / 2, to_pos.y())
         dy = abs(end.y() - start.y()) / 2
         ctrl1 = QPointF(start.x(), start.y() + dy)
         ctrl2 = QPointF(end.x(), end.y() - dy)

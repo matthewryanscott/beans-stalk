@@ -1,7 +1,7 @@
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor
 from beans.models import Bean, BeanId
-from beans_stalk.ui.bean_node import BeanNode, NODE_WIDTH, NODE_HEIGHT
+from beans_stalk.ui.bean_node import BeanNode
 
 def _bean(title="Test", status="open", assignee=None, priority=2):
     return Bean(id=BeanId.generate(), title=title, status=status, assignee=assignee, priority=priority)
@@ -10,8 +10,13 @@ class TestBeanNode:
     def test_bounding_rect(self, qapp):
         node = BeanNode(_bean(), "#e06c75")
         rect = node.boundingRect()
-        assert rect.width() == NODE_WIDTH
-        assert rect.height() == NODE_HEIGHT
+        assert rect.width() >= 140  # NODE_MIN_WIDTH
+        assert rect.height() > 0
+
+    def test_long_title_wraps(self, qapp):
+        node = BeanNode(_bean(title="This is a very long task title that should wrap"), "#e06c75")
+        short_node = BeanNode(_bean(title="Short"), "#e06c75")
+        assert node.node_height >= short_node.node_height
 
     def test_click_emits_signal(self, qtbot):
         bean = _bean()

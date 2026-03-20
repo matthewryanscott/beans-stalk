@@ -9,12 +9,12 @@ class TestDepEdge:
 
     def test_update_path_creates_valid_path(self, qapp):
         edge = DepEdge("a", "b")
-        edge.update_path(QPointF(0, 0), QPointF(0, 200))
+        edge.update_path(QPointF(0, 0), (160, 40), QPointF(0, 200), (160, 40))
         assert not edge.path().isEmpty()
 
     def test_shape_is_wider_than_path(self, qapp):
         edge = DepEdge("a", "b")
-        edge.update_path(QPointF(0, 0), QPointF(0, 200))
+        edge.update_path(QPointF(0, 0), (160, 40), QPointF(0, 200), (160, 40))
         assert edge.shape().boundingRect().width() > edge.path().boundingRect().width()
 
     def test_z_value_is_negative(self, qapp):

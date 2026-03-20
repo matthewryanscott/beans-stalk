@@ -3,10 +3,58 @@ from PySide6.QtGui import QColor, QPainter, QPen, QFont, QFontMetrics
 from PySide6.QtWidgets import QGraphicsObject, QStyleOptionGraphicsItem, QWidget
 from beans.models import Bean
 
-NODE_WIDTH = 160
-NODE_HEIGHT = 40
+NODE_MIN_WIDTH = 140
+NODE_MAX_WIDTH = 240
+NODE_PADDING_H = 10
+NODE_PADDING_V = 6
+PRIORITY_COL_WIDTH = 18  # space reserved for priority dot on right
 CORNER_RADIUS = 8
 PRIORITY_RADIUS = 6
+LINE_HEIGHT_FACTOR = 1.3
+NODE_FONT = QFont("system-ui", 10)
+
+
+def _compute_node_size(title: str) -> tuple[float, float]:
+    """Compute node width and height based on title, allowing up to 2 lines."""
+    fm = QFontMetrics(NODE_FONT)
+    text_avail_max = NODE_MAX_WIDTH - NODE_PADDING_H * 2 - PRIORITY_COL_WIDTH
+    full_width = fm.horizontalAdvance(title)
+
+    if full_width <= text_avail_max:
+        # Single line fits
+        width = max(NODE_MIN_WIDTH, full_width + NODE_PADDING_H * 2 + PRIORITY_COL_WIDTH)
+        height = fm.height() + NODE_PADDING_V * 2
+        return width, height
+
+    # Need 2 lines — find a good break point
+    # Use elided text on line 2 if still too long
+    line_height = int(fm.height() * LINE_HEIGHT_FACTOR)
+    height = line_height * 2 + NODE_PADDING_V * 2
+    width = NODE_MAX_WIDTH
+    return width, height
+
+
+def _wrap_title(title: str, max_width: int) -> list[str]:
+    """Split title into up to 2 lines, eliding the second if needed."""
+    fm = QFontMetrics(NODE_FONT)
+    if fm.horizontalAdvance(title) <= max_width:
+        return [title]
+
+    # Find break point for first line — try word boundaries
+    words = title.split()
+    line1 = ""
+    for i, word in enumerate(words):
+        candidate = f"{line1} {word}".strip()
+        if fm.horizontalAdvance(candidate) > max_width and line1:
+            break
+        line1 = candidate
+    else:
+        # All words fit on one line (shouldn't happen but be safe)
+        return [title]
+
+    remainder = " ".join(words[i:])
+    line2 = fm.elidedText(remainder, Qt.TextElideMode.ElideRight, max_width)
+    return [line1, line2]
 
 
 class BeanNode(QGraphicsObject):
@@ -18,9 +66,18 @@ class BeanNode(QGraphicsObject):
         self._color = QColor(color)
         self._muted = muted
         self._hovered = False
+        self._width, self._height = _compute_node_size(bean.title)
         self.setAcceptHoverEvents(True)
         self.setFlag(self.GraphicsItemFlag.ItemIsSelectable, True)
         self.setCacheMode(self.CacheMode.DeviceCoordinateCache)
+
+    @property
+    def node_width(self) -> float:
+        return self._width
+
+    @property
+    def node_height(self) -> float:
+        return self._height
 
     @property
     def bean(self) -> Bean:
@@ -29,6 +86,8 @@ class BeanNode(QGraphicsObject):
     @bean.setter
     def bean(self, value: Bean):
         self._bean = value
+        self._width, self._height = _compute_node_size(value.title)
+        self.prepareGeometryChange()
         self.update()
 
     @property
@@ -53,10 +112,11 @@ class BeanNode(QGraphicsObject):
     animPos = Property(QPointF, _get_anim_pos, _set_anim_pos)
 
     def boundingRect(self) -> QRectF:
-        return QRectF(0, 0, NODE_WIDTH, NODE_HEIGHT)
+        return QRectF(0, 0, self._width, self._height)
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget = None):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self._width, self._height
         fill_color = QColor(self._color)
         if self._muted:
             fill_color.setAlphaF(0.3)
@@ -65,14 +125,14 @@ class BeanNode(QGraphicsObject):
 
         painter.setPen(QPen(fill_color.darker(130), 2))
         painter.setBrush(fill_color)
-        painter.drawRoundedRect(QRectF(1, 1, NODE_WIDTH - 2, NODE_HEIGHT - 2), CORNER_RADIUS, CORNER_RADIUS)
+        painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), CORNER_RADIUS, CORNER_RADIUS)
 
         if self.isSelected():
             painter.setPen(QPen(Qt.GlobalColor.white, 2, Qt.PenStyle.DashLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(QRectF(1, 1, NODE_WIDTH - 2, NODE_HEIGHT - 2), CORNER_RADIUS, CORNER_RADIUS)
+            painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), CORNER_RADIUS, CORNER_RADIUS)
 
-        # Use perceived luminance for contrast — white text on dark, black on light
+        # Use perceived luminance for contrast
         r, g, b = self._color.redF(), self._color.greenF(), self._color.blueF()
         luminance = 0.299 * r + 0.587 * g + 0.114 * b
         text_color = Qt.GlobalColor.black if luminance > 0.55 else Qt.GlobalColor.white
@@ -81,19 +141,32 @@ class BeanNode(QGraphicsObject):
             tc.setAlphaF(0.5)
             text_color = tc
         painter.setPen(text_color)
-        font = QFont("system-ui", 10)
-        painter.setFont(font)
-        text_rect = QRectF(8, 2, NODE_WIDTH - 24, NODE_HEIGHT - 4)
-        elided = QFontMetrics(font).elidedText(self._bean.title, Qt.TextElideMode.ElideRight, int(text_rect.width()))
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, elided)
+        painter.setFont(NODE_FONT)
 
+        text_max_width = int(w - NODE_PADDING_H * 2 - PRIORITY_COL_WIDTH)
+        lines = _wrap_title(self._bean.title, text_max_width)
+        fm = QFontMetrics(NODE_FONT)
+        line_height = int(fm.height() * LINE_HEIGHT_FACTOR)
+        total_text_height = line_height * len(lines)
+        y_start = (h - total_text_height) / 2 + fm.ascent()
+
+        for i, line in enumerate(lines):
+            painter.drawText(
+                QPointF(NODE_PADDING_H, y_start + i * line_height),
+                line,
+            )
+
+        # Priority indicator
         priority_colors = ["#ff4444", "#ff8800", "#ffcc00", "#88cc00", "#44aa44"]
         pc = QColor(priority_colors[self._bean.priority])
         if self._muted:
             pc.setAlphaF(0.3)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(pc)
-        painter.drawEllipse(QPointF(NODE_WIDTH - PRIORITY_RADIUS - 6, PRIORITY_RADIUS + 6), PRIORITY_RADIUS, PRIORITY_RADIUS)
+        painter.drawEllipse(
+            QPointF(w - PRIORITY_RADIUS - 6, PRIORITY_RADIUS + 6),
+            PRIORITY_RADIUS, PRIORITY_RADIUS,
+        )
 
     def hoverEnterEvent(self, event):
         self._hovered = True

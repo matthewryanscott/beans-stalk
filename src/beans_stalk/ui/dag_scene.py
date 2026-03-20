@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QGraphicsScene, QGraphicsTextItem
 from PySide6.QtGui import QColor, QFont
 
 from beans.models import Bean, Dep
-from beans_stalk.ui.bean_node import BeanNode
+from beans_stalk.ui.bean_node import BeanNode, _compute_node_size
 from beans_stalk.ui.dep_edge import DepEdge
 from beans_stalk.config import StalkConfig
 from beans_stalk.graph.layout import build_dag, compute_layout, stabilize_layout
@@ -63,10 +63,16 @@ class DagScene(QGraphicsScene):
             else:
                 visible_beans[bean.id] = (bean, False)
 
+        # Precompute node sizes for layout spacing
+        node_sizes = {
+            bean_id: _compute_node_size(bean.title)
+            for bean_id, (bean, _muted) in visible_beans.items()
+        }
+
         # Build DAG and compute layout
         graph = build_dag(beans, deps)
         visible_ids = set(visible_beans.keys())
-        new_positions = compute_layout(graph, visible_ids)
+        new_positions = compute_layout(graph, visible_ids, node_sizes=node_sizes)
         new_positions = stabilize_layout(new_positions, self._positions, self._selected_id)
 
         # Placeholder
@@ -130,7 +136,9 @@ class DagScene(QGraphicsScene):
             if dep.from_id in new_positions and dep.to_id in new_positions:
                 edge.update_path(
                     QPointF(*new_positions[dep.from_id]),
+                    node_sizes.get(dep.from_id, (140, 40)),
                     QPointF(*new_positions[dep.to_id]),
+                    node_sizes.get(dep.to_id, (140, 40)),
                 )
 
         self._positions = new_positions
