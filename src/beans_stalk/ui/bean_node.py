@@ -66,6 +66,7 @@ class BeanNode(QGraphicsObject):
         self._color = QColor(color)
         self._muted = muted
         self._hovered = False
+        self._highlighted = False
         self._width, self._height = _compute_node_size(bean.title)
         self.setAcceptHoverEvents(True)
         self.setFlag(self.GraphicsItemFlag.ItemIsSelectable, True)
@@ -99,6 +100,15 @@ class BeanNode(QGraphicsObject):
         self._muted = value
         self.update()
 
+    @property
+    def highlighted(self) -> bool:
+        return self._highlighted
+
+    @highlighted.setter
+    def highlighted(self, value: bool):
+        self._highlighted = value
+        self.update()
+
     def set_color(self, color: str):
         self._color = QColor(color)
         self.update()
@@ -120,6 +130,8 @@ class BeanNode(QGraphicsObject):
         fill_color = QColor(self._color)
         if self._muted:
             fill_color.setAlphaF(0.3)
+        if self._highlighted and not self._muted:
+            fill_color = fill_color.lighter(115)
         if self._hovered and not self._muted:
             fill_color = fill_color.lighter(120)
 

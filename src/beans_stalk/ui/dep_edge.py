@@ -3,8 +3,9 @@ from PySide6.QtGui import QPainter, QPainterPath, QPainterPathStroker, QPen, QCo
 from PySide6.QtWidgets import QGraphicsPathItem
 
 ARROW_SIZE = 8
-EDGE_COLOR = "#aaaaaa"
+EDGE_COLOR = "#666666"
 EDGE_HOVER_COLOR = "#ffffff"
+EDGE_HIGHLIGHT_COLOR = "#cccccc"
 
 
 class DepEdge(QGraphicsPathItem):
@@ -13,9 +14,20 @@ class DepEdge(QGraphicsPathItem):
         self.from_id = from_id
         self.to_id = to_id
         self._hovered = False
+        self._highlighted = False
         self.setPen(QPen(QColor(EDGE_COLOR), 1.5))
         self.setAcceptHoverEvents(True)
         self.setZValue(-1)
+
+    @property
+    def highlighted(self) -> bool:
+        return self._highlighted
+
+    @highlighted.setter
+    def highlighted(self, value: bool):
+        self._highlighted = value
+        self.setZValue(0 if value else -1)  # highlighted edges draw above others
+        self.update()
 
     def update_path(self, from_pos: QPointF, from_size: tuple[float, float],
                     to_pos: QPointF, to_size: tuple[float, float]):
@@ -33,8 +45,15 @@ class DepEdge(QGraphicsPathItem):
 
     def paint(self, painter: QPainter, option, widget=None):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor(EDGE_HOVER_COLOR if self._hovered else EDGE_COLOR)
-        width = 2.5 if self._hovered else 1.5
+        if self._hovered:
+            color = QColor(EDGE_HOVER_COLOR)
+            width = 2.5
+        elif self._highlighted:
+            color = QColor(EDGE_HIGHLIGHT_COLOR)
+            width = 2.0
+        else:
+            color = QColor(EDGE_COLOR)
+            width = 1.5
         painter.setPen(QPen(color, width))
         painter.drawPath(self.path())
         path = self.path()

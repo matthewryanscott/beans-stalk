@@ -35,11 +35,25 @@ class DagScene(QGraphicsScene):
 
     @selected_id.setter
     def selected_id(self, value: str | None):
+        # Clear previous selection highlights
         if self._selected_id and self._selected_id in self._nodes:
             self._nodes[self._selected_id].setSelected(False)
+        for node in self._nodes.values():
+            node.highlighted = False
+        for edge in self._edges.values():
+            edge.highlighted = False
+
         self._selected_id = value
+
         if value and value in self._nodes:
             self._nodes[value].setSelected(True)
+            # Highlight connected edges and neighbor nodes
+            for edge in self._edges.values():
+                if edge.from_id == value or edge.to_id == value:
+                    edge.highlighted = True
+                    neighbor_id = edge.to_id if edge.from_id == value else edge.from_id
+                    if neighbor_id in self._nodes:
+                        self._nodes[neighbor_id].highlighted = True
 
     @property
     def show_completed(self) -> bool:
