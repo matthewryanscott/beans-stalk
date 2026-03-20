@@ -3,14 +3,14 @@ from PySide6.QtGui import QColor, QPainter, QPen, QFont, QFontMetrics
 from PySide6.QtWidgets import QGraphicsObject, QStyleOptionGraphicsItem, QWidget
 from beans.models import Bean
 
-NODE_MIN_WIDTH = 140
-NODE_MAX_WIDTH = 240
-NODE_PADDING_H = 10
-NODE_PADDING_V = 6
-PRIORITY_COL_WIDTH = 18  # space reserved for priority dot on right
-CORNER_RADIUS = 8
-PRIORITY_RADIUS = 6
-LINE_HEIGHT_FACTOR = 1.3
+NODE_MIN_WIDTH = 120
+NODE_MAX_WIDTH = 200
+NODE_PADDING_H = 8
+NODE_PADDING_V = 5
+PRIORITY_COL_WIDTH = 16  # space reserved for priority dot on right
+CORNER_RADIUS = 6
+PRIORITY_RADIUS = 5
+LINE_HEIGHT_FACTOR = 1.15
 NODE_FONT = QFont("system-ui", 10)
 
 

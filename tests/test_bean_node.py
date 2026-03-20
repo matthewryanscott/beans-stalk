@@ -10,7 +10,7 @@ class TestBeanNode:
     def test_bounding_rect(self, qapp):
         node = BeanNode(_bean(), "#e06c75")
         rect = node.boundingRect()
-        assert rect.width() >= 140  # NODE_MIN_WIDTH
+        assert rect.width() >= 120  # NODE_MIN_WIDTH
         assert rect.height() > 0
 
     def test_long_title_wraps(self, qapp):

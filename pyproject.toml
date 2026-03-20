@@ -11,7 +11,6 @@ dependencies = [
     "pyside6",
     "magic-beans",
     "networkx",
-    "pygraphviz",
     "watchdog",
     "tomli-w",
     "typer",

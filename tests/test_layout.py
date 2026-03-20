@@ -63,8 +63,41 @@ class TestComputeLayout:
         g = build_dag(beans, deps)
         visible = {"bean-00000001", "bean-00000002", "bean-00000003"}
         positions = compute_layout(g, visible)
+        # Each node should be on a different layer (different Y)
         ys = [positions[nid][1] for nid in sorted(visible)]
         assert len(set(ys)) == 3
+        # Y should increase (top to bottom in screen coords)
+        assert ys[0] < ys[1] < ys[2]
+
+    def test_parallel_nodes_same_layer(self):
+        beans = [_bean("bean-00000001", "Root"), _bean("bean-00000002", "A"), _bean("bean-00000003", "B")]
+        deps = [_dep("bean-00000001", "bean-00000002"), _dep("bean-00000001", "bean-00000003")]
+        g = build_dag(beans, deps)
+        visible = {"bean-00000001", "bean-00000002", "bean-00000003"}
+        positions = compute_layout(g, visible)
+        # A and B should be on the same layer
+        assert positions["bean-00000002"][1] == positions["bean-00000003"][1]
+        # But different X
+        assert positions["bean-00000002"][0] != positions["bean-00000003"][0]
+
+    def test_nodes_do_not_overlap(self):
+        beans = [_bean(f"bean-0000000{i}", f"Task {i}") for i in range(5)]
+        deps = [_dep("bean-00000000", f"bean-0000000{i}") for i in range(1, 5)]
+        g = build_dag(beans, deps)
+        visible = {b.id for b in beans}
+        sizes = {b.id: (140.0, 30.0) for b in beans}
+        positions = compute_layout(g, visible, node_sizes=sizes)
+        # Check no horizontal overlap within layers
+        from collections import defaultdict
+        by_y = defaultdict(list)
+        for nid, (x, y) in positions.items():
+            by_y[y].append((x, sizes[nid][0]))
+        for y, nodes_in_row in by_y.items():
+            nodes_in_row.sort()
+            for i in range(len(nodes_in_row) - 1):
+                x1, w1 = nodes_in_row[i]
+                x2, _ = nodes_in_row[i + 1]
+                assert x2 >= x1 + w1, f"Overlap at y={y}: {x1}+{w1} vs {x2}"
 
 
 class TestStabilizeLayout:
