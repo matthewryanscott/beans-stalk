@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QPointF, Signal
+from PySide6.QtCore import Qt, QPointF, QEvent, Signal
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QGraphicsView, QMenu
 
@@ -8,7 +8,6 @@ from beans_stalk.ui.dep_edge import DepEdge
 
 MIN_ZOOM = 0.1
 MAX_ZOOM = 10.0
-ZOOM_FACTOR = 1.15
 
 
 class DagView(QGraphicsView):
@@ -35,10 +34,28 @@ class DagView(QGraphicsView):
         self.grabGesture(Qt.GestureType.PinchGesture)
 
     def wheelEvent(self, event):
-        factor = ZOOM_FACTOR if event.angleDelta().y() > 0 else 1 / ZOOM_FACTOR
-        current = self.transform().m11()
-        if MIN_ZOOM < current * factor < MAX_ZOOM:
-            self.scale(factor, factor)
+        """Scroll wheel scrolls the viewport — no zoom."""
+        super().wheelEvent(event)
+
+    def event(self, event):
+        """Handle gesture events for pinch-to-zoom."""
+        if event.type() == QEvent.Type.Gesture:
+            return self._gesture_event(event)
+        return super().event(event)
+
+    def _gesture_event(self, event):
+        """Handle pinch gesture for smooth zoom."""
+        gesture = event.gesture(Qt.GestureType.PinchGesture)
+        if gesture:
+            if gesture.state() == Qt.GestureState.GestureUpdated:
+                scale_factor = gesture.scaleFactor()
+                current_scale = self.transform().m11()
+                if (current_scale * scale_factor < MIN_ZOOM and scale_factor < 1) or \
+                   (current_scale * scale_factor > MAX_ZOOM and scale_factor > 1):
+                    return True
+                self.scale(scale_factor, scale_factor)
+            return True
+        return False
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
