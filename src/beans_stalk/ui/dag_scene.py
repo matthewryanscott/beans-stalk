@@ -137,6 +137,35 @@ class DagScene(QGraphicsScene):
             if key not in current_dep_keys:
                 self.removeItem(self._edges.pop(key))
 
+        # Compute port fractions: spread edge attachment points across each node
+        # Group outgoing edges per source, sorted by target X
+        # Group incoming edges per target, sorted by source X
+        from collections import defaultdict
+        outgoing: dict[str, list[str]] = defaultdict(list)  # source -> [targets]
+        incoming: dict[str, list[str]] = defaultdict(list)  # target -> [sources]
+        for dep in deps:
+            key = (dep.from_id, dep.to_id)
+            if key in current_dep_keys:
+                outgoing[dep.from_id].append(dep.to_id)
+                incoming[dep.to_id].append(dep.from_id)
+
+        # Sort each group by the connected node's X position
+        def _center_x(nid):
+            if nid in new_positions:
+                w = node_sizes.get(nid, (140, 40))[0]
+                return new_positions[nid][0] + w / 2
+            return 0
+
+        for src, targets in outgoing.items():
+            targets.sort(key=_center_x)
+        for tgt, sources in incoming.items():
+            sources.sort(key=_center_x)
+
+        def _port_frac(index: int, total: int) -> float:
+            if total <= 1:
+                return 0.5
+            return index / (total - 1)
+
         # Add/update edges
         for dep in deps:
             key = (dep.from_id, dep.to_id)
@@ -148,11 +177,17 @@ class DagScene(QGraphicsScene):
                 self.addItem(edge)
             edge = self._edges[key]
             if dep.from_id in new_positions and dep.to_id in new_positions:
+                out_list = outgoing[dep.from_id]
+                in_list = incoming[dep.to_id]
+                from_frac = _port_frac(out_list.index(dep.to_id), len(out_list))
+                to_frac = _port_frac(in_list.index(dep.from_id), len(in_list))
                 edge.update_path(
                     QPointF(*new_positions[dep.from_id]),
                     node_sizes.get(dep.from_id, (140, 40)),
                     QPointF(*new_positions[dep.to_id]),
                     node_sizes.get(dep.to_id, (140, 40)),
+                    from_port_frac=from_frac,
+                    to_port_frac=to_frac,
                 )
 
         self._positions = new_positions

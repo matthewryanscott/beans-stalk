@@ -50,8 +50,8 @@ def _order_within_layers(
     for layer in layers:
         layer.sort()
 
-    # Barycenter heuristic: sweep down then up a few times
-    for _ in range(4):
+    # Barycenter heuristic: sweep down then up repeatedly
+    for _ in range(8):
         # Forward sweep (top to bottom)
         for i in range(1, len(layers)):
             _sort_by_barycenter(graph, layers[i], layers[i - 1], predecessors=True)

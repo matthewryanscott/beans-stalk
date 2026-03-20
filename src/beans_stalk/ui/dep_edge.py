@@ -30,12 +30,21 @@ class DepEdge(QGraphicsPathItem):
         self.update()
 
     def update_path(self, from_pos: QPointF, from_size: tuple[float, float],
-                    to_pos: QPointF, to_size: tuple[float, float]):
-        """Update bezier path. Positions are top-left; sizes are (width, height)."""
+                    to_pos: QPointF, to_size: tuple[float, float],
+                    from_port_frac: float = 0.5, to_port_frac: float = 0.5):
+        """Update bezier path with distributed attachment points.
+
+        port_frac: 0.0 = left edge, 0.5 = center, 1.0 = right edge of node.
+        """
         from_w, from_h = from_size
         to_w, _ = to_size
-        start = QPointF(from_pos.x() + from_w / 2, from_pos.y() + from_h)
-        end = QPointF(to_pos.x() + to_w / 2, to_pos.y())
+        # Inset ports slightly from edges for visual margin
+        from_margin = min(8, from_w * 0.1)
+        to_margin = min(8, to_w * 0.1)
+        from_x = from_pos.x() + from_margin + (from_w - 2 * from_margin) * from_port_frac
+        to_x = to_pos.x() + to_margin + (to_w - 2 * to_margin) * to_port_frac
+        start = QPointF(from_x, from_pos.y() + from_h)
+        end = QPointF(to_x, to_pos.y())
         dy = abs(end.y() - start.y()) / 2
         ctrl1 = QPointF(start.x(), start.y() + dy)
         ctrl2 = QPointF(end.x(), end.y() - dy)
