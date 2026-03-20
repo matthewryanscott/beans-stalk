@@ -161,40 +161,46 @@ def _refine_x_positions(
     sizes: dict[str, tuple[float, float]],
     default_size: tuple[float, float],
 ) -> dict[str, tuple[float, float]]:
-    """Shift nodes horizontally toward their connected nodes' average X, avoiding overlaps."""
-    for _ in range(4):
-        # Compute target X for each node (average center X of neighbors)
-        targets: dict[str, float] = {}
-        for node in positions:
-            w = sizes.get(node, default_size)[0]
-            center = positions[node][0] + w / 2
-            neighbors = list(graph.predecessors(node)) + list(graph.successors(node))
-            connected = [n for n in neighbors if n in positions]
-            if connected:
-                avg = sum(
-                    positions[n][0] + sizes.get(n, default_size)[0] / 2
-                    for n in connected
-                ) / len(connected)
-                targets[node] = avg - w / 2
-            else:
-                targets[node] = positions[node][0]
+    """Gently shift nodes toward their connected nodes' average X, avoiding overlaps.
 
-        # Apply targets within each layer, resolving overlaps
+    Uses dampening (30% per pass) to prevent aggressive drift.
+    """
+    damping = 0.3
+
+    for _ in range(6):
         for layer in layers:
             if not layer:
                 continue
-            # Sort by current position
             layer_nodes = sorted(layer, key=lambda n: positions[n][0])
-            # Apply targets
-            new_xs = {n: targets.get(n, positions[n][0]) for n in layer_nodes}
+            new_xs: dict[str, float] = {}
+
+            for node in layer_nodes:
+                w = sizes.get(node, default_size)[0]
+                current_x = positions[node][0]
+                current_center = current_x + w / 2
+
+                neighbors = list(graph.predecessors(node)) + list(graph.successors(node))
+                connected = [n for n in neighbors if n in positions]
+                if connected:
+                    avg_center = sum(
+                        positions[n][0] + sizes.get(n, default_size)[0] / 2
+                        for n in connected
+                    ) / len(connected)
+                    target_x = avg_center - w / 2
+                    # Dampen: move only partially toward target
+                    new_xs[node] = current_x + (target_x - current_x) * damping
+                else:
+                    new_xs[node] = current_x
+
             # Resolve overlaps left to right
             for i in range(1, len(layer_nodes)):
                 prev = layer_nodes[i - 1]
                 curr = layer_nodes[i]
-                prev_right = new_xs[prev] + sizes.get(prev, default_size)[0] + NODE_GAP
-                if new_xs[curr] < prev_right:
-                    new_xs[curr] = prev_right
-            # Also resolve right to left for balance
+                min_x = new_xs[prev] + sizes.get(prev, default_size)[0] + NODE_GAP
+                if new_xs[curr] < min_x:
+                    new_xs[curr] = min_x
+
+            # Resolve overlaps right to left
             for i in range(len(layer_nodes) - 2, -1, -1):
                 curr = layer_nodes[i]
                 nxt = layer_nodes[i + 1]
