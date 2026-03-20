@@ -115,6 +115,20 @@ class DagView(QGraphicsView):
             return
         super().keyPressEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.pos())
+            if isinstance(item, BeanNode):
+                if item.ghost:
+                    # Navigate to ghost's home view (its parent level)
+                    self._dag_scene.navigate_requested.emit(item.bean.parent_id)
+                elif item.bean.id in self._dag_scene._parent_ids:
+                    # Drill into parent's children
+                    self._dag_scene.navigate_requested.emit(item.bean.id)
+                event.accept()
+                return
+        super().mouseDoubleClickEvent(event)
+
     def contextMenuEvent(self, event):
         item = self.itemAt(event.pos())
         menu = QMenu(self)
