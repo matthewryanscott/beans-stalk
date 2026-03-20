@@ -161,10 +161,15 @@ def _refine_x_positions(
     sizes: dict[str, tuple[float, float]],
     default_size: tuple[float, float],
 ) -> dict[str, tuple[float, float]]:
-    """Gently shift nodes toward their connected nodes' average X, avoiding overlaps.
+    """Shift nodes toward connected neighbors while maintaining centered balance.
 
-    Uses dampening (30% per pass) to prevent aggressive drift.
+    Blends neighbor attraction (70%) with initial centered position (30%)
+    to prevent layout drift.
     """
+    # Save initial centered positions as anchors
+    initial_x = {n: positions[n][0] for n in positions}
+    neighbor_weight = 0.7
+    anchor_weight = 0.3
     damping = 0.3
 
     for _ in range(6):
@@ -177,7 +182,6 @@ def _refine_x_positions(
             for node in layer_nodes:
                 w = sizes.get(node, default_size)[0]
                 current_x = positions[node][0]
-                current_center = current_x + w / 2
 
                 neighbors = list(graph.predecessors(node)) + list(graph.successors(node))
                 connected = [n for n in neighbors if n in positions]
@@ -186,8 +190,9 @@ def _refine_x_positions(
                         positions[n][0] + sizes.get(n, default_size)[0] / 2
                         for n in connected
                     ) / len(connected)
-                    target_x = avg_center - w / 2
-                    # Dampen: move only partially toward target
+                    neighbor_target = avg_center - w / 2
+                    # Blend neighbor attraction with anchor to initial position
+                    target_x = neighbor_target * neighbor_weight + initial_x[node] * anchor_weight
                     new_xs[node] = current_x + (target_x - current_x) * damping
                 else:
                     new_xs[node] = current_x
@@ -210,6 +215,14 @@ def _refine_x_positions(
 
             for n in layer_nodes:
                 positions[n] = (new_xs[n], positions[n][1])
+
+    # Re-center the whole layout around x=0
+    all_xs = [positions[n][0] for n in positions]
+    all_rights = [positions[n][0] + sizes.get(n, default_size)[0] for n in positions]
+    if all_xs:
+        overall_center = (min(all_xs) + max(all_rights)) / 2
+        for n in positions:
+            positions[n] = (positions[n][0] - overall_center, positions[n][1])
 
     return positions
 
