@@ -1,4 +1,4 @@
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor
 from beans.models import Bean, BeanId
 from beans_stalk.ui.bean_node import BeanNode
@@ -47,3 +47,50 @@ class TestBeanNode:
         node = BeanNode(_bean(), "#e06c75")
         node.animPos = QPointF(100, 200)
         assert node.pos() == QPointF(100, 200)
+
+
+class TestBeanNodeGhost:
+    def test_ghost_default_false(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        assert not node.ghost
+
+    def test_ghost_property(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        node.ghost = True
+        assert node.ghost
+
+    def test_ghost_sets_pointing_hand_cursor(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        node.ghost = True
+        assert node.cursor().shape() == Qt.CursorShape.PointingHandCursor
+
+    def test_ghost_clears_cursor(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        node.ghost = True
+        node.ghost = False
+        assert node.cursor().shape() == Qt.CursorShape.ArrowCursor
+
+
+class TestBeanNodePulsing:
+    def test_pulsing_default_false(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        assert not node.pulsing
+
+    def test_pulsing_property(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        node.pulsing = True
+        assert node.pulsing
+
+    def test_pulsing_changes_cache_mode(self, qapp):
+        from PySide6.QtWidgets import QGraphicsItem
+        node = BeanNode(_bean(), "#e06c75")
+        assert node.cacheMode() == QGraphicsItem.CacheMode.DeviceCoordinateCache
+        node.pulsing = True
+        assert node.cacheMode() == QGraphicsItem.CacheMode.NoCache
+        node.pulsing = False
+        assert node.cacheMode() == QGraphicsItem.CacheMode.DeviceCoordinateCache
+
+    def test_pulse_phase_property(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        node.pulsePhase = 0.5
+        assert node.pulsePhase == 0.5

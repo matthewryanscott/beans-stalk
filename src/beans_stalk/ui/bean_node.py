@@ -1,4 +1,4 @@
-from PySide6.QtCore import QRectF, Qt, Signal, QPointF, Property
+from PySide6.QtCore import QRectF, Qt, Signal, QPointF, Property, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QPainter, QPen, QFont, QFontMetrics
 from PySide6.QtWidgets import QGraphicsObject, QStyleOptionGraphicsItem, QWidget
 from beans.models import Bean
@@ -79,6 +79,10 @@ class BeanNode(QGraphicsObject):
         self._bean = bean
         self._color = QColor(color)
         self._muted = muted
+        self._ghost = False
+        self._pulsing = False
+        self._pulse_phase = 0.0
+        self._pulse_anim: QPropertyAnimation | None = None
         self._hovered = False
         self._highlighted = False
         self._width, self._height = _compute_node_size(bean.title)
@@ -123,6 +127,54 @@ class BeanNode(QGraphicsObject):
         self._highlighted = value
         self.update()
 
+    @property
+    def ghost(self) -> bool:
+        return self._ghost
+
+    @ghost.setter
+    def ghost(self, value: bool):
+        self._ghost = value
+        if value:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.update()
+
+    @property
+    def pulsing(self) -> bool:
+        return self._pulsing
+
+    @pulsing.setter
+    def pulsing(self, value: bool):
+        if self._pulsing == value:
+            return
+        self._pulsing = value
+        if value:
+            self.setCacheMode(self.CacheMode.NoCache)
+            self._pulse_anim = QPropertyAnimation(self, b"pulsePhase")
+            self._pulse_anim.setDuration(1500)
+            self._pulse_anim.setStartValue(0.0)
+            self._pulse_anim.setEndValue(1.0)
+            self._pulse_anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+            self._pulse_anim.setLoopCount(-1)
+            self._pulse_anim.start()
+        else:
+            if self._pulse_anim is not None:
+                self._pulse_anim.stop()
+                self._pulse_anim = None
+            self._pulse_phase = 0.0
+            self.setCacheMode(self.CacheMode.DeviceCoordinateCache)
+        self.update()
+
+    def _get_pulse_phase(self) -> float:
+        return self._pulse_phase
+
+    def _set_pulse_phase(self, value: float):
+        self._pulse_phase = value
+        self.update()
+
+    pulsePhase = Property(float, _get_pulse_phase, _set_pulse_phase)
+
     def set_color(self, color: str):
         self._color = QColor(color)
         self.update()
@@ -149,7 +201,15 @@ class BeanNode(QGraphicsObject):
         if self._hovered and not self._muted:
             fill_color = fill_color.lighter(120)
 
-        painter.setPen(QPen(fill_color.darker(130), 2))
+        border_width = 2.0
+        if self._pulsing:
+            border_width = 2.0 + 2.0 * self._pulse_phase
+
+        if self._ghost:
+            fill_color.setAlphaF(0.2)
+            painter.setPen(QPen(fill_color.darker(130), border_width, Qt.PenStyle.DashLine))
+        else:
+            painter.setPen(QPen(fill_color.darker(130), border_width))
         painter.setBrush(fill_color)
         painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), CORNER_RADIUS, CORNER_RADIUS)
 
@@ -162,7 +222,11 @@ class BeanNode(QGraphicsObject):
         r, g, b = self._color.redF(), self._color.greenF(), self._color.blueF()
         luminance = 0.299 * r + 0.587 * g + 0.114 * b
         text_color = Qt.GlobalColor.black if luminance > 0.55 else Qt.GlobalColor.white
-        if self._muted:
+        if self._ghost:
+            tc = QColor(text_color)
+            tc.setAlphaF(0.4)
+            text_color = tc
+        elif self._muted:
             tc = QColor(text_color)
             tc.setAlphaF(0.5)
             text_color = tc
@@ -183,16 +247,17 @@ class BeanNode(QGraphicsObject):
             )
 
         # Priority indicator
-        priority_colors = ["#ff4444", "#ff8800", "#ffcc00", "#88cc00", "#44aa44"]
-        pc = QColor(priority_colors[self._bean.priority])
-        if self._muted:
-            pc.setAlphaF(0.3)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(pc)
-        painter.drawEllipse(
-            QPointF(w - PRIORITY_RADIUS - 6, PRIORITY_RADIUS + 6),
-            PRIORITY_RADIUS, PRIORITY_RADIUS,
-        )
+        if not self._ghost:
+            priority_colors = ["#ff4444", "#ff8800", "#ffcc00", "#88cc00", "#44aa44"]
+            pc = QColor(priority_colors[self._bean.priority])
+            if self._muted:
+                pc.setAlphaF(0.3)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(pc)
+            painter.drawEllipse(
+                QPointF(w - PRIORITY_RADIUS - 6, PRIORITY_RADIUS + 6),
+                PRIORITY_RADIUS, PRIORITY_RADIUS,
+            )
 
     def hoverEnterEvent(self, event):
         self._hovered = True
