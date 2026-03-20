@@ -166,10 +166,6 @@ def _refine_x_positions(
     Blends neighbor attraction (70%) with initial centered position (30%)
     to prevent layout drift.
     """
-    # Save initial centered positions as anchors
-    initial_x = {n: positions[n][0] for n in positions}
-    neighbor_weight = 0.7
-    anchor_weight = 0.3
     damping = 0.3
 
     for _ in range(6):
@@ -190,9 +186,7 @@ def _refine_x_positions(
                         positions[n][0] + sizes.get(n, default_size)[0] / 2
                         for n in connected
                     ) / len(connected)
-                    neighbor_target = avg_center - w / 2
-                    # Blend neighbor attraction with anchor to initial position
-                    target_x = neighbor_target * neighbor_weight + initial_x[node] * anchor_weight
+                    target_x = avg_center - w / 2
                     new_xs[node] = current_x + (target_x - current_x) * damping
                 else:
                     new_xs[node] = current_x
@@ -216,13 +210,17 @@ def _refine_x_positions(
             for n in layer_nodes:
                 positions[n] = (new_xs[n], positions[n][1])
 
-    # Re-center the whole layout around x=0
-    all_xs = [positions[n][0] for n in positions]
-    all_rights = [positions[n][0] + sizes.get(n, default_size)[0] for n in positions]
-    if all_xs:
-        overall_center = (min(all_xs) + max(all_rights)) / 2
-        for n in positions:
-            positions[n] = (positions[n][0] - overall_center, positions[n][1])
+    # Re-center each layer so the layout stays balanced
+    for layer in layers:
+        if not layer:
+            continue
+        xs = [positions[n][0] for n in layer]
+        widths = [sizes.get(n, default_size)[0] for n in layer]
+        layer_left = min(xs)
+        layer_right = max(x + w for x, w in zip(xs, widths))
+        layer_center = (layer_left + layer_right) / 2
+        for n in layer:
+            positions[n] = (positions[n][0] - layer_center, positions[n][1])
 
     return positions
 
