@@ -17,20 +17,34 @@ NODE_FONT = QFont("system-ui", 10)
 def _compute_node_size(title: str) -> tuple[float, float]:
     """Compute node width and height based on title, allowing up to 2 lines."""
     fm = QFontMetrics(NODE_FONT)
-    text_avail_max = NODE_MAX_WIDTH - NODE_PADDING_H * 2 - PRIORITY_COL_WIDTH
+    chrome = NODE_PADDING_H * 2 + PRIORITY_COL_WIDTH
+    text_avail_max = NODE_MAX_WIDTH - chrome
     full_width = fm.horizontalAdvance(title)
 
     if full_width <= text_avail_max:
-        # Single line fits
-        width = max(NODE_MIN_WIDTH, full_width + NODE_PADDING_H * 2 + PRIORITY_COL_WIDTH)
+        # Single line fits — size to content
+        width = max(NODE_MIN_WIDTH, full_width + chrome)
         height = fm.height() + NODE_PADDING_V * 2
         return width, height
 
-    # Need 2 lines — find a good break point
-    # Use elided text on line 2 if still too long
+    # Need 2 lines — find the narrowest width where the title wraps into 2 lines
+    # by trying to balance the two lines (target ~half the text width)
+    target_text_w = full_width / 2
+    # Find the actual break point width — measure each word prefix
+    words = title.split()
+    best_text_w = text_avail_max
+    for i in range(1, len(words)):
+        line1 = " ".join(words[:i])
+        w = fm.horizontalAdvance(line1)
+        if w >= target_text_w:
+            # Also measure the second line to pick the more balanced split
+            line2 = " ".join(words[i:])
+            best_text_w = max(w, fm.horizontalAdvance(line2))
+            break
+
     line_height = int(fm.height() * LINE_HEIGHT_FACTOR)
     height = line_height * 2 + NODE_PADDING_V * 2
-    width = NODE_MAX_WIDTH
+    width = min(NODE_MAX_WIDTH, max(NODE_MIN_WIDTH, best_text_w + chrome))
     return width, height
 
 
