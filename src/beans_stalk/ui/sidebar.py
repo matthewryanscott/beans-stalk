@@ -1,15 +1,12 @@
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -58,17 +55,21 @@ class Sidebar(QWidget):
         self._title_edit = QLineEdit()
         layout.addWidget(self._title_edit)
 
-        # Type
-        layout.addWidget(QLabel("Type"))
+        # Type + Status side-by-side
+        type_status_row = QHBoxLayout()
+        type_col = QVBoxLayout()
+        type_col.addWidget(QLabel("Type"))
         self._type_combo = QComboBox()
         self._type_combo.addItems(["task", "bug", "feature", "epic"])
-        layout.addWidget(self._type_combo)
-
-        # Status
-        layout.addWidget(QLabel("Status"))
+        type_col.addWidget(self._type_combo)
+        type_status_row.addLayout(type_col)
+        status_col = QVBoxLayout()
+        status_col.addWidget(QLabel("Status"))
         self._status_combo = QComboBox()
         self._status_combo.addItems(["open", "in_progress", "closed"])
-        layout.addWidget(self._status_combo)
+        status_col.addWidget(self._status_combo)
+        type_status_row.addLayout(status_col)
+        layout.addLayout(type_status_row)
 
         # Priority
         layout.addWidget(QLabel("Priority"))
@@ -104,42 +105,6 @@ class Sidebar(QWidget):
         self._body_edit = QTextEdit()
         self._body_edit.setMinimumHeight(80)
         layout.addWidget(self._body_edit)
-
-        # Dependencies: blocks
-        blocks_group = QGroupBox("Blocks")
-        blocks_layout = QVBoxLayout(blocks_group)
-        self._blocks_list = QListWidget()
-        blocks_layout.addWidget(self._blocks_list)
-        blocks_btn_row = QHBoxLayout()
-        self._add_blocks_btn = QPushButton("Add")
-        self._add_blocks_btn.clicked.connect(lambda: self._add_dep_dialog("blocks"))
-        blocks_btn_row.addWidget(self._add_blocks_btn)
-        self._remove_blocks_btn = QPushButton("Remove")
-        self._remove_blocks_btn.clicked.connect(
-            lambda: self._remove_selected_dep(self._blocks_list, "blocks")
-        )
-        blocks_btn_row.addWidget(self._remove_blocks_btn)
-        blocks_layout.addLayout(blocks_btn_row)
-        layout.addWidget(blocks_group)
-
-        # Dependencies: blocked by
-        blocked_by_group = QGroupBox("Blocked By")
-        blocked_by_layout = QVBoxLayout(blocked_by_group)
-        self._blocked_by_list = QListWidget()
-        blocked_by_layout.addWidget(self._blocked_by_list)
-        blocked_by_btn_row = QHBoxLayout()
-        self._add_blocked_by_btn = QPushButton("Add")
-        self._add_blocked_by_btn.clicked.connect(
-            lambda: self._add_dep_dialog("blocked_by")
-        )
-        blocked_by_btn_row.addWidget(self._add_blocked_by_btn)
-        self._remove_blocked_by_btn = QPushButton("Remove")
-        self._remove_blocked_by_btn.clicked.connect(
-            lambda: self._remove_selected_dep(self._blocked_by_list, "blocked_by")
-        )
-        blocked_by_btn_row.addWidget(self._remove_blocked_by_btn)
-        blocked_by_layout.addLayout(blocked_by_btn_row)
-        layout.addWidget(blocked_by_group)
 
         # Save button
         self._save_btn = QPushButton("Save")
@@ -187,18 +152,6 @@ class Sidebar(QWidget):
         color = self._config.get_color(bean.assignee)
         self._color_btn.setStyleSheet(f"background-color: {color};")
 
-        # Populate dependency lists
-        self._blocks_list.clear()
-        self._blocked_by_list.clear()
-        for dep in deps:
-            if dep.from_id == bean.id:
-                # This bean blocks dep.to_id
-                item = QListWidgetItem(str(dep.to_id))
-                self._blocks_list.addItem(item)
-            elif dep.to_id == bean.id:
-                # This bean is blocked by dep.from_id
-                item = QListWidgetItem(str(dep.from_id))
-                self._blocked_by_list.addItem(item)
 
     def start_new_bean(self, prefill: dict | None = None):
         """Switch to create-new-bean mode, optionally pre-filling fields."""
@@ -218,8 +171,6 @@ class Sidebar(QWidget):
         self._body_edit.setPlainText(self._pre_filled.get("body", ""))
         self._save_btn.setText("Create")
 
-        self._blocks_list.clear()
-        self._blocked_by_list.clear()
 
     def show_status(self, message: str):
         """Display a status/error message."""
@@ -268,28 +219,3 @@ class Sidebar(QWidget):
             self._color_btn.setStyleSheet(f"background-color: {hex_color};")
             self.color_changed.emit(assignee, hex_color)
 
-    def _add_dep_dialog(self, direction: str):
-        """Show an input dialog to add a dependency."""
-        if self._current_bean is None:
-            return
-        bean_id_str, ok = QInputDialog.getText(
-            self, "Add Dependency", "Bean ID:"
-        )
-        if ok and bean_id_str:
-            if direction == "blocks":
-                self.add_dep_requested.emit(str(self._current_bean.id), bean_id_str)
-            else:
-                self.add_dep_requested.emit(bean_id_str, str(self._current_bean.id))
-
-    def _remove_selected_dep(self, list_widget: QListWidget, direction: str):
-        """Remove the selected dependency from the list."""
-        if self._current_bean is None:
-            return
-        current_item = list_widget.currentItem()
-        if current_item is None:
-            return
-        other_id = current_item.text()
-        if direction == "blocks":
-            self.remove_dep_requested.emit(str(self._current_bean.id), other_id)
-        else:
-            self.remove_dep_requested.emit(other_id, str(self._current_bean.id))

@@ -1,6 +1,4 @@
-from PySide6.QtCore import Qt
-
-from beans.models import Bean, BeanId, Dep
+from beans.models import Bean, BeanId
 from beans_stalk.config import StalkConfig
 from beans_stalk.ui.sidebar import Sidebar
 
@@ -62,18 +60,6 @@ class TestSidebar:
         with qtbot.waitSignal(sidebar.create_bean_requested, timeout=1000) as blocker:
             sidebar._save_btn.click()
         assert blocker.args[0]["title"] == "New Task"
-
-    def test_deps_displayed(self, qtbot):
-        sidebar = Sidebar(StalkConfig())
-        qtbot.addWidget(sidebar)
-        bean = _bean()
-        deps = [
-            Dep(from_id=bean.id, to_id=BeanId("bean-00000002")),
-            Dep(from_id=BeanId("bean-00000003"), to_id=bean.id),
-        ]
-        sidebar.show_bean(bean, deps)
-        assert sidebar._blocks_list.count() == 1
-        assert sidebar._blocked_by_list.count() == 1
 
     def test_status_message(self, qtbot):
         sidebar = Sidebar(StalkConfig())
