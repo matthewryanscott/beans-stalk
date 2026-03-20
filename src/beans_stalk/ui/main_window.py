@@ -2,12 +2,13 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QMainWindow, QSplitter, QFileDialog
+from PySide6.QtWidgets import QMainWindow, QSplitter, QFileDialog, QWidget, QVBoxLayout
 
 from beans.models import Bean, Dep
 from beans_stalk.config import StalkConfig
 from beans_stalk.data.store import StalkStore
 from beans_stalk.data.watcher import DataWatcher
+from beans_stalk.ui.breadcrumb import BreadcrumbBar
 from beans_stalk.ui.dag_scene import DagScene
 from beans_stalk.ui.dag_view import DagView
 from beans_stalk.ui.sidebar import Sidebar
@@ -37,9 +38,22 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Left pane: breadcrumb + DAG view
+        left_pane = QWidget()
+        left_layout = QVBoxLayout(left_pane)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+
+        self._breadcrumb = BreadcrumbBar()
+        left_layout.addWidget(self._breadcrumb)
+
         self._scene = DagScene(self._config)
         self._view = DagView(self._scene)
-        splitter.addWidget(self._view)
+        left_layout.addWidget(self._view)
+
+        splitter.addWidget(left_pane)
+
         self._sidebar = Sidebar(self._config)
         splitter.addWidget(self._sidebar)
         splitter.setStretchFactor(0, 1)
@@ -48,6 +62,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(splitter)
 
         # Connect signals
+        self._breadcrumb.navigate_to.connect(self._on_breadcrumb_navigate)
+        self._scene.navigate_requested.connect(self._on_scene_navigate)
         self._scene.node_clicked.connect(self._on_node_selected)
         self._scene.dep_toggle_requested.connect(self._on_dep_toggle)
         self._scene.dep_remove_requested.connect(self._on_dep_remove)
@@ -97,6 +113,38 @@ class MainWindow(QMainWindow):
         self._toggle_on_top_action.setShortcut(QKeySequence("Ctrl+T"))
         self._toggle_on_top_action.triggered.connect(self._on_toggle_on_top)
         view_menu.addAction(self._toggle_on_top_action)
+
+    def _apply_navigation(self, parent_id):
+        """Update scene to show a parent level. Does NOT touch breadcrumb."""
+        self._scene.selected_id = None
+        self._scene.current_parent_id = parent_id
+        self._scene.update_snapshot(self._beans, self._deps)
+
+    def _on_scene_navigate(self, parent_id):
+        """Handle navigation from double-click in DAG (scene signal).
+        Updates both breadcrumb and scene."""
+        if parent_id is None:
+            self._breadcrumb.clear()
+        else:
+            # Check if popping back or drilling deeper
+            found = False
+            for pid, _ in self._breadcrumb._path:
+                if pid == parent_id:
+                    self._breadcrumb.blockSignals(True)
+                    self._breadcrumb.pop_to(parent_id)
+                    self._breadcrumb.blockSignals(False)
+                    found = True
+                    break
+            if not found:
+                bean = next((b for b in self._beans if b.id == parent_id), None)
+                title = bean.title if bean else parent_id
+                self._breadcrumb.push(parent_id, title)
+        self._apply_navigation(parent_id)
+
+    def _on_breadcrumb_navigate(self, parent_id):
+        """Handle navigation from breadcrumb click.
+        Breadcrumb already updated itself — just update scene."""
+        self._apply_navigation(parent_id)
 
     @Slot(list, list)
     def _on_snapshot_changed(self, beans: list[Bean], deps: list[Dep]):
