@@ -31,3 +31,33 @@ class TestDagView:
         assert hasattr(view, "new_child_requested")
         assert hasattr(view, "new_blocker_requested")
         assert hasattr(view, "new_blocked_by_requested")
+
+    def test_get_viewport_state(self, qtbot):
+        scene = DagScene(StalkConfig())
+        view = DagView(scene)
+        qtbot.addWidget(view)
+        view.show()
+        state = view.get_viewport_state()
+        assert "center_x" in state
+        assert "center_y" in state
+        assert "scale" in state
+        assert isinstance(state["scale"], float)
+
+    def test_restore_viewport_state(self, qtbot):
+        scene = DagScene(StalkConfig())
+        view = DagView(scene)
+        qtbot.addWidget(view)
+        view.show()
+        state = {"center_x": 100.0, "center_y": 200.0, "scale": 1.5}
+        view.restore_viewport_state(state)
+        result = view.get_viewport_state()
+        assert abs(result["scale"] - 1.5) < 0.01
+
+    def test_viewport_roundtrip(self, qtbot):
+        scene = DagScene(StalkConfig())
+        view = DagView(scene)
+        qtbot.addWidget(view)
+        view.show()
+        view.restore_viewport_state({"center_x": 50.0, "center_y": -30.0, "scale": 2.0})
+        state = view.get_viewport_state()
+        assert abs(state["scale"] - 2.0) < 0.01

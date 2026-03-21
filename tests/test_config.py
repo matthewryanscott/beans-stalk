@@ -68,6 +68,21 @@ class TestStalkConfig:
         reloaded = StalkConfig.load(tmp_path)
         assert reloaded.layout_algorithm == "sugiyama_compact"
 
+    def test_viewports_default_empty(self, tmp_path):
+        config = StalkConfig.load(tmp_path)
+        assert config.viewports == {}
+
+    def test_viewports_save_roundtrip(self, tmp_path):
+        config = StalkConfig(viewports={
+            "root": {"center_x": 100.0, "center_y": -50.0, "scale": 1.5},
+            "bean-abc": {"center_x": 0.0, "center_y": 0.0, "scale": 0.8},
+        })
+        config.save(tmp_path)
+        reloaded = StalkConfig.load(tmp_path)
+        assert reloaded.viewports["root"]["center_x"] == 100.0
+        assert reloaded.viewports["root"]["scale"] == 1.5
+        assert reloaded.viewports["bean-abc"]["scale"] == 0.8
+
     def test_get_color_for_none_assignee(self):
         config = StalkConfig(colors={})
         color = config.get_color(None)

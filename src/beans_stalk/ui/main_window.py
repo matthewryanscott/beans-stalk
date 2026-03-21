@@ -117,11 +117,27 @@ class MainWindow(QMainWindow):
         self._toggle_on_top_action.triggered.connect(self._on_toggle_on_top)
         view_menu.addAction(self._toggle_on_top_action)
 
+    def _viewport_key(self) -> str:
+        pid = self._scene.current_parent_id
+        return pid if pid is not None else "root"
+
+    def _save_viewport(self):
+        key = self._viewport_key()
+        self._config.viewports[key] = self._view.get_viewport_state()
+
+    def _restore_viewport(self):
+        key = self._viewport_key()
+        state = self._config.viewports.get(key)
+        if state:
+            self._view.restore_viewport_state(state)
+
     def _apply_navigation(self, parent_id):
         """Update scene to show a parent level. Does NOT touch breadcrumb."""
+        self._save_viewport()
         self._scene.selected_id = None
         self._scene.current_parent_id = parent_id
         self._scene.update_snapshot(self._beans, self._deps)
+        self._restore_viewport()
 
     def _on_scene_navigate(self, parent_id):
         """Handle navigation from double-click in DAG (scene signal).
@@ -151,9 +167,12 @@ class MainWindow(QMainWindow):
 
     @Slot(list, list)
     def _on_snapshot_changed(self, beans: list[Bean], deps: list[Dep]):
+        first_load = not self._beans
         self._beans = beans
         self._deps = deps
         self._scene.update_snapshot(beans, deps)
+        if first_load:
+            self._restore_viewport()
         if self._scene.selected_id:
             bean = next(
                 (b for b in beans if b.id == self._scene.selected_id), None
@@ -274,6 +293,8 @@ class MainWindow(QMainWindow):
             self._on_open_dir(dir_path)
 
     def closeEvent(self, event):
+        self._save_viewport()
+        self._config.save(self._beans_dir)
         self._watcher.stop()
         self._store.close()
         super().closeEvent(event)

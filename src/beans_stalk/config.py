@@ -31,6 +31,7 @@ class StalkConfig:
     poll_interval_seconds: int = 2
     layout_algorithm: str = "sugiyama"
     colors: dict[str, str] = field(default_factory=dict)
+    viewports: dict[str, dict[str, float]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, beans_dir: Path) -> "StalkConfig":
@@ -44,6 +45,7 @@ class StalkConfig:
             poll_interval_seconds=data.get("poll_interval_seconds", 2),
             layout_algorithm=data.get("layout_algorithm", "sugiyama"),
             colors=dict(data.get("colors", {})),
+            viewports={k: dict(v) for k, v in data.get("viewports", {}).items()},
         )
 
     def save(self, beans_dir: Path) -> None:
@@ -53,6 +55,7 @@ class StalkConfig:
             "poll_interval_seconds": self.poll_interval_seconds,
             "layout_algorithm": self.layout_algorithm,
             "colors": self.colors,
+            "viewports": self.viewports,
         }
         with open(toml_path, "wb") as f:
             tomli_w.dump(data, f)

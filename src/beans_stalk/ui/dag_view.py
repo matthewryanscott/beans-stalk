@@ -129,6 +129,21 @@ class DagView(QGraphicsView):
                 return
         super().mouseDoubleClickEvent(event)
 
+    def get_viewport_state(self) -> dict[str, float]:
+        """Return current center (scene coords) and scale."""
+        center = self.mapToScene(self.viewport().rect().center())
+        scale = self.transform().m11()
+        return {"center_x": center.x(), "center_y": center.y(), "scale": scale}
+
+    def restore_viewport_state(self, state: dict[str, float]) -> None:
+        """Restore center and scale from saved state."""
+        scale = state.get("scale", 1.0)
+        current_scale = self.transform().m11()
+        if current_scale > 0:
+            factor = scale / current_scale
+            self.scale(factor, factor)
+        self.centerOn(state.get("center_x", 0.0), state.get("center_y", 0.0))
+
     def contextMenuEvent(self, event):
         item = self.itemAt(event.pos())
         menu = QMenu(self)
