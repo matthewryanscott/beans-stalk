@@ -237,6 +237,14 @@ def _sweep_layer(
         else:
             ref_nodes = [s for s in graph.successors(node) if s in positions]
 
+        # Fallback: if no refs in primary direction, use the other direction
+        # This centers root nodes above their children, and leaf nodes under parents
+        if not ref_nodes:
+            if direction == "down":
+                ref_nodes = [s for s in graph.successors(node) if s in positions]
+            else:
+                ref_nodes = [p for p in graph.predecessors(node) if p in positions]
+
         if ref_nodes:
             ref_centers = [
                 positions[n][0] + sizes.get(n, default_size)[0] / 2
@@ -295,6 +303,54 @@ def _refine_x_positions(
 
         # Re-center after each iteration to prevent drift
         _global_center_shift(positions, sizes, default_size)
+
+    # Final pass: clean placement in two phases.
+    # Phase 1: top-down for non-root layers (each node placed under predecessors)
+    # Phase 2: position root nodes above their now-updated successors
+    # Final centering: position real nodes only (skip virtual routing nodes).
+    # Bottom-up: parents centered above children.
+    # Top-down: children placed under parents.
+    def _place_real_nodes(layer, use_predecessors):
+        real_nodes = [n for n in layer if n not in virtual_ids]
+        if not real_nodes:
+            return
+        real_nodes.sort(key=lambda n: positions[n][0])
+        new_xs: dict[str, float] = {}
+        for node in real_nodes:
+            w = sizes.get(node, default_size)[0]
+            if use_predecessors:
+                ref = [p for p in graph.predecessors(node) if p in positions and p not in virtual_ids]
+            else:
+                ref = [s for s in graph.successors(node) if s in positions and s not in virtual_ids]
+            if ref:
+                centers = [
+                    positions[n][0] + sizes.get(n, default_size)[0] / 2
+                    for n in ref
+                ]
+                new_xs[node] = _median(centers) - w / 2
+            else:
+                new_xs[node] = positions[node][0]
+        # Resolve overlaps
+        for i in range(1, len(real_nodes)):
+            prev = real_nodes[i - 1]
+            curr = real_nodes[i]
+            min_x = new_xs[prev] + sizes.get(prev, default_size)[0] + NODE_GAP
+            if new_xs[curr] < min_x:
+                new_xs[curr] = min_x
+        for i in range(len(real_nodes) - 2, -1, -1):
+            curr = real_nodes[i]
+            nxt = real_nodes[i + 1]
+            max_x = new_xs[nxt] - sizes.get(curr, default_size)[0] - NODE_GAP
+            if new_xs[curr] > max_x:
+                new_xs[curr] = max_x
+        for n in real_nodes:
+            positions[n] = (new_xs[n], positions[n][1])
+
+    # Bottom-up: each parent centered above its real children
+    for layer in reversed(layers):
+        _place_real_nodes(layer, use_predecessors=False)
+
+    _global_center_shift(positions, sizes, default_size)
 
     return positions
 
@@ -367,14 +423,19 @@ def compute_layout(
     if len(components) == 1:
         return _layout_single_component(subgraph, sizes, default_size)
 
-    # Layout each component independently, then pack side by side
-    # Sort components: largest first (most nodes) for visual stability
-    components.sort(key=len, reverse=True)
+    # Separate multi-node components from singletons (isolated nodes)
+    multi_components = [c for c in components if len(c) > 1]
+    singletons = [c for c in components if len(c) == 1]
 
+    # Sort multi-components: largest first for visual stability
+    multi_components.sort(key=len, reverse=True)
+
+    # Layout each multi-node component independently, then pack side by side
     all_positions: dict[str, tuple[float, float]] = {}
+    component_bounds: list[tuple[float, float, float, float]] = []  # (left, top, right, bottom)
     current_x = 0.0
 
-    for comp_nodes in components:
+    for comp_nodes in multi_components:
         comp_subgraph = subgraph.subgraph(comp_nodes).copy()
         comp_sizes = {nid: sizes.get(nid, default_size) for nid in comp_nodes}
         comp_positions = _layout_single_component(comp_subgraph, comp_sizes, default_size)
@@ -382,19 +443,48 @@ def compute_layout(
         if not comp_positions:
             continue
 
-        # Find the bounding box of this component
         comp_xs = [x for x, _ in comp_positions.values()]
+        comp_ys = [y for _, y in comp_positions.values()]
         comp_rights = [x + sizes.get(nid, default_size)[0] for nid, (x, _) in comp_positions.items()]
+        comp_bottoms = [y + sizes.get(nid, default_size)[1] for nid, (_, y) in comp_positions.items()]
         comp_left = min(comp_xs)
         comp_right = max(comp_rights)
 
-        # Shift component so its left edge starts at current_x
         shift_x = current_x - comp_left
         for nid in comp_positions:
             x, y = comp_positions[nid]
             all_positions[nid] = (x + shift_x, y)
 
+        component_bounds.append((
+            current_x,
+            min(comp_ys),
+            current_x + (comp_right - comp_left),
+            max(comp_bottoms),
+        ))
         current_x += (comp_right - comp_left) + COMPONENT_GAP
+
+    # Tuck singletons beside the last component's bottom-right gap
+    if singletons and component_bounds:
+        last_left, last_top, last_right, last_bottom = component_bounds[-1]
+        singleton_x = last_right + NODE_GAP
+        singleton_y = last_bottom - len(singletons) * (default_size[1] + NODE_GAP)
+        # Don't place above the component's midpoint
+        min_y = (last_top + last_bottom) / 2
+        singleton_y = max(singleton_y, min_y)
+
+        for comp_nodes in singletons:
+            nid = next(iter(comp_nodes))
+            w, h = sizes.get(nid, default_size)
+            all_positions[nid] = (singleton_x, singleton_y)
+            singleton_y += h + NODE_GAP
+    elif singletons:
+        # No multi-components — just place singletons
+        y = 0.0
+        for comp_nodes in singletons:
+            nid = next(iter(comp_nodes))
+            w, h = sizes.get(nid, default_size)
+            all_positions[nid] = (0.0, y)
+            y += h + NODE_GAP
 
     # Global centering
     _global_center_shift(all_positions, sizes, default_size)
