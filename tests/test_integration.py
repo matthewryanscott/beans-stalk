@@ -4,7 +4,8 @@ from beans import api
 
 from beans_stalk.config import StalkConfig
 from beans_stalk.data.store import StalkStore
-from beans_stalk.graph.layout import build_dag, compute_layout
+from beans_stalk.graph.layout import build_dag
+from beans_stalk.graph.layouts import get_provider
 from beans_stalk.ui.dag_scene import DagScene
 
 
@@ -26,7 +27,7 @@ class TestDataToLayoutPipeline:
         assert len(graph.nodes) == 3
         assert len(graph.edges) == 2
 
-        positions = compute_layout(graph, {a.id, b.id, c.id})
+        positions = get_provider("sugiyama").compute(graph, {a.id, b.id, c.id})
         assert len(positions) == 3
 
 
@@ -89,3 +90,29 @@ class TestDrillDownIntegration:
         scene.update_snapshot(beans, deps)
         assert parent.id in scene._nodes
         assert child_a.id not in scene._nodes
+
+
+class TestLayoutAlgorithmSwitching:
+    def test_switch_algorithms_produces_valid_layouts(self, qapp, tmp_beans_dir, store):
+        from beans import api
+
+        from beans_stalk.config import StalkConfig
+        from beans_stalk.graph.layouts import PROVIDERS
+        from beans_stalk.ui.dag_scene import DagScene
+
+        # Create some beans with deps
+        root = api.create_bean(store, "Root")
+        child_a = api.create_bean(store, "Child A")
+        child_b = api.create_bean(store, "Child B")
+        api.add_dep(store, root.id, child_a.id)
+        api.add_dep(store, root.id, child_b.id)
+        beans = store.list()
+        deps = store.list_all_deps()
+
+        config = StalkConfig.load(tmp_beans_dir)
+        scene = DagScene(config)
+
+        for key in PROVIDERS:
+            scene.layout_algorithm = key
+            scene.update_snapshot(beans, deps)
+            assert len(scene._nodes) == 3, f"Algorithm {key} failed to place nodes"

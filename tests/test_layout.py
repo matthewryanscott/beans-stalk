@@ -1,5 +1,6 @@
 from beans.models import Bean, BeanId, Dep
-from beans_stalk.graph.layout import build_dag, compute_layout, stabilize_layout
+from beans_stalk.graph.layout import build_dag, stabilize_layout
+from beans_stalk.graph.layouts import get_provider
 
 
 def _bean(id_: str, title: str, status: str = "open", assignee: str | None = None) -> Bean:
@@ -38,13 +39,13 @@ class TestBuildDag:
 class TestComputeLayout:
     def test_empty(self):
         g = build_dag([], [])
-        positions = compute_layout(g, set())
+        positions = get_provider("sugiyama").compute(g, set())
         assert positions == {}
 
     def test_single_node(self):
         beans = [_bean("bean-00000001", "A")]
         g = build_dag(beans, [])
-        positions = compute_layout(g, {"bean-00000001"})
+        positions = get_provider("sugiyama").compute(g, {"bean-00000001"})
         assert "bean-00000001" in positions
         x, y = positions["bean-00000001"]
         assert isinstance(x, float)
@@ -53,7 +54,7 @@ class TestComputeLayout:
     def test_filters_to_visible_ids(self):
         beans = [_bean("bean-00000001", "A"), _bean("bean-00000002", "B")]
         g = build_dag(beans, [])
-        positions = compute_layout(g, {"bean-00000001"})
+        positions = get_provider("sugiyama").compute(g, {"bean-00000001"})
         assert "bean-00000001" in positions
         assert "bean-00000002" not in positions
 
@@ -62,7 +63,7 @@ class TestComputeLayout:
         deps = [_dep("bean-00000001", "bean-00000002"), _dep("bean-00000002", "bean-00000003")]
         g = build_dag(beans, deps)
         visible = {"bean-00000001", "bean-00000002", "bean-00000003"}
-        positions = compute_layout(g, visible)
+        positions = get_provider("sugiyama").compute(g, visible)
         # Each node should be on a different layer (different Y)
         ys = [positions[nid][1] for nid in sorted(visible)]
         assert len(set(ys)) == 3
@@ -74,7 +75,7 @@ class TestComputeLayout:
         deps = [_dep("bean-00000001", "bean-00000002"), _dep("bean-00000001", "bean-00000003")]
         g = build_dag(beans, deps)
         visible = {"bean-00000001", "bean-00000002", "bean-00000003"}
-        positions = compute_layout(g, visible)
+        positions = get_provider("sugiyama").compute(g, visible)
         # A and B should be on the same layer
         assert positions["bean-00000002"][1] == positions["bean-00000003"][1]
         # But different X
@@ -86,7 +87,7 @@ class TestComputeLayout:
         g = build_dag(beans, deps)
         visible = {b.id for b in beans}
         sizes = {b.id: (140.0, 30.0) for b in beans}
-        positions = compute_layout(g, visible, node_sizes=sizes)
+        positions = get_provider("sugiyama").compute(g, visible, node_sizes=sizes)
         # Check no horizontal overlap within layers
         from collections import defaultdict
         by_y = defaultdict(list)
@@ -116,7 +117,7 @@ class TestComputeLayout:
         g = build_dag(beans, deps)
         visible = {b.id for b in beans}
         sizes = {b.id: (140.0, 30.0) for b in beans}
-        positions = compute_layout(g, visible, node_sizes=sizes)
+        positions = get_provider("sugiyama").compute(g, visible, node_sizes=sizes)
 
         # In each shared layer, the two cluster nodes should not overlap
         # Layer 0: a1, b1  Layer 1: a2, b2  Layer 2: a3, b3
@@ -150,7 +151,7 @@ class TestComputeLayout:
         g = build_dag(beans, deps)
         visible = {b.id for b in beans}
         sizes = {b.id: (140.0, 30.0) for b in beans}
-        positions = compute_layout(g, visible, node_sizes=sizes)
+        positions = get_provider("sugiyama").compute(g, visible, node_sizes=sizes)
 
         # All visible nodes should exist
         assert len(positions) == 4
@@ -182,8 +183,8 @@ class TestComputeLayout:
         visible = {b.id for b in beans}
         sizes = {b.id: (140.0, 30.0) for b in beans}
 
-        pos1 = compute_layout(g, visible, node_sizes=sizes)
-        pos2 = compute_layout(g, visible, node_sizes=sizes)
+        pos1 = get_provider("sugiyama").compute(g, visible, node_sizes=sizes)
+        pos2 = get_provider("sugiyama").compute(g, visible, node_sizes=sizes)
         assert pos1 == pos2
 
 

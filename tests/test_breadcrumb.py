@@ -64,3 +64,43 @@ class TestBreadcrumbBar:
         with qtbot.waitSignal(bar.navigate_to, timeout=1000) as blocker:
             root_btn.click()
         assert blocker.args == [None]
+
+    def test_has_layout_combo(self, qtbot):
+        from PySide6.QtWidgets import QComboBox
+
+        bar = BreadcrumbBar()
+        qtbot.addWidget(bar)
+        assert hasattr(bar, "_layout_combo")
+        assert isinstance(bar._layout_combo, QComboBox)
+
+    def test_layout_combo_has_providers(self, qtbot):
+        from beans_stalk.graph.layouts import PROVIDERS
+
+        bar = BreadcrumbBar()
+        qtbot.addWidget(bar)
+        assert bar._layout_combo.count() == len(PROVIDERS)
+
+    def test_layout_combo_emits_signal(self, qtbot):
+        import pytest
+
+        bar = BreadcrumbBar()
+        qtbot.addWidget(bar)
+        if bar._layout_combo.count() < 2:
+            pytest.skip("Need at least 2 providers to test signal")
+        with qtbot.waitSignal(bar.layout_changed, timeout=1000) as blocker:
+            bar._layout_combo.setCurrentIndex(1)
+        assert isinstance(blocker.args[0], str)
+
+    def test_layout_combo_survives_rebuild(self, qtbot):
+        from beans_stalk.graph.layouts import PROVIDERS
+
+        bar = BreadcrumbBar()
+        qtbot.addWidget(bar)
+        bar.push("bean-001", "Epic")  # triggers _rebuild
+        assert bar._layout_combo.count() == len(PROVIDERS)
+
+    def test_set_layout_algorithm(self, qtbot):
+        bar = BreadcrumbBar()
+        qtbot.addWidget(bar)
+        bar.set_layout_algorithm("sugiyama_compact")
+        assert bar._layout_combo.currentData() == "sugiyama_compact"
