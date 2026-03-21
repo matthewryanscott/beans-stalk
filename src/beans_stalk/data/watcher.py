@@ -56,9 +56,13 @@ class DataWatcher(QObject):
         self._debounce_timer.timeout.connect(self._check_for_changes)
 
         handler = _DbFileHandler(self._db_path, self._trigger_debounced_poll)
-        self._observer = Observer()
-        self._observer.schedule(handler, str(self._db_path.parent), recursive=False)
-        self._observer.start()
+        try:
+            self._observer = Observer()
+            self._observer.schedule(handler, str(self._db_path.parent), recursive=False)
+            self._observer.start()
+        except RuntimeError:
+            # Path already watched by another window — fall back to poll timer only
+            self._observer = None
 
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(self._poll_interval_ms)
