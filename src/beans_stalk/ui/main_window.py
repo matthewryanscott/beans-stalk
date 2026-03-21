@@ -16,14 +16,15 @@ from beans_stalk.ui.sidebar import Sidebar
 
 class MainWindow(QMainWindow):
     def __init__(self, beans_dir: Path, on_open_dir=None, on_new_window=None,
-                 navigate_to: str | None = None, parent=None):
+                 navigate_to: str | None = None, config: StalkConfig | None = None,
+                 parent=None):
         super().__init__(parent)
         self._beans_dir = beans_dir
         self._on_open_dir = on_open_dir
         self._on_new_window = on_new_window
         self._initial_navigate_to = navigate_to
         self._db_path = beans_dir / "beans.db"
-        self._config = StalkConfig.load(beans_dir)
+        self._config = config if config is not None else StalkConfig.load(beans_dir)
         self._store = StalkStore(self._db_path)
         self._watcher = DataWatcher(
             db_path=self._db_path,

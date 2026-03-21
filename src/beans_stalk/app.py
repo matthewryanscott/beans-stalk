@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
+from beans_stalk.config import StalkConfig
 from beans_stalk.main import IpcServer
 from beans_stalk.ui.main_window import MainWindow
 
@@ -17,6 +18,14 @@ class StalkApp:
         self._ipc_server: IpcServer | None = None
         self._windows: dict[str, MainWindow] = {}
         self._extra_windows: list[MainWindow] = []
+        self._configs: dict[str, StalkConfig] = {}
+
+    def _get_config(self, beans_dir: Path) -> StalkConfig:
+        """Get or create a shared config for a beans directory."""
+        resolved = str(beans_dir.resolve())
+        if resolved not in self._configs:
+            self._configs[resolved] = StalkConfig.load(beans_dir)
+        return self._configs[resolved]
 
     def open_beans_dir(self, beans_dir_path: str):
         """Open a window for a beans directory, or focus existing."""
@@ -32,8 +41,9 @@ class StalkApp:
         if not db_path.exists():
             return
 
+        config = self._get_config(beans_dir)
         win = MainWindow(beans_dir, on_open_dir=self.open_beans_dir,
-                         on_new_window=self.open_new_window)
+                         on_new_window=self.open_new_window, config=config)
         win.destroyed.connect(lambda: self._windows.pop(resolved, None))
         self._windows[resolved] = win
         win.show()
@@ -45,9 +55,10 @@ class StalkApp:
         if not db_path.exists():
             return
 
+        config = self._get_config(beans_dir)
         win = MainWindow(beans_dir, on_open_dir=self.open_beans_dir,
                          on_new_window=self.open_new_window,
-                         navigate_to=navigate_to)
+                         navigate_to=navigate_to, config=config)
         self._extra_windows.append(win)
         win.destroyed.connect(lambda: self._remove_extra_window(win))
         win.show()
