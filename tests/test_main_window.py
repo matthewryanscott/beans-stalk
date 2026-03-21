@@ -37,6 +37,14 @@ class TestMainWindow:
         assert not (win.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
         win.close()
 
+    def test_layout_algorithm_change(self, qtbot, tmp_beans_dir, store):
+        win = MainWindow(tmp_beans_dir)
+        qtbot.addWidget(win)
+        assert win._scene.layout_algorithm == "sugiyama"
+        win._on_layout_changed("sugiyama_compact")
+        assert win._scene.layout_algorithm == "sugiyama_compact"
+        win.close()
+
     def test_node_selection_updates_sidebar(self, tmp_beans_dir, store, qtbot):
         a = api.create_bean(store, "Task A")
         store.close()

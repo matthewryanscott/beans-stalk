@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Render the DAG layout to a PNG using the actual Qt scene in headless mode."""
+import argparse
 import os
 import sys
 
@@ -17,8 +18,14 @@ from beans_stalk.ui.dag_scene import DagScene
 
 
 def main():
-    beans_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".beans")
-    output = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("/tmp/layout.png")
+    parser = argparse.ArgumentParser(description="Render DAG layout to PNG")
+    parser.add_argument("beans_dir", nargs="?", default=".beans")
+    parser.add_argument("-o", "--output", default="/tmp/layout.png")
+    parser.add_argument("-a", "--algorithm", default="sugiyama")
+    args = parser.parse_args()
+
+    beans_dir = Path(args.beans_dir)
+    output = Path(args.output)
 
     _app = QApplication.instance() or QApplication(sys.argv)
 
@@ -28,6 +35,7 @@ def main():
     store.close()
 
     scene = DagScene(config)
+    scene.layout_algorithm = args.algorithm
     scene.show_completed = True  # Show all beans including closed
     scene.update_snapshot(beans, deps)
 

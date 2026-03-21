@@ -46,9 +46,12 @@ class MainWindow(QMainWindow):
         left_layout.setSpacing(0)
 
         self._breadcrumb = BreadcrumbBar()
+        self._breadcrumb.set_layout_algorithm(self._config.layout_algorithm)
+        self._breadcrumb.layout_changed.connect(self._on_layout_changed)
         left_layout.addWidget(self._breadcrumb)
 
         self._scene = DagScene(self._config)
+        self._scene.layout_algorithm = self._config.layout_algorithm
         self._view = DagView(self._scene)
         left_layout.addWidget(self._view)
 
@@ -231,6 +234,13 @@ class MainWindow(QMainWindow):
             self._store.add_dep(from_id, to_id)
         except Exception as e:
             self._sidebar.show_status(str(e))
+
+    @Slot(str)
+    def _on_layout_changed(self, key: str):
+        self._config.layout_algorithm = key
+        self._config.save(self._beans_dir)
+        self._scene.layout_algorithm = key
+        self._scene.update_snapshot(self._beans, self._deps)
 
     @Slot(str, str)
     def _on_color_changed(self, assignee: str, color: str):
