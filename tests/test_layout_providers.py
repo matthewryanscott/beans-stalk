@@ -1,3 +1,5 @@
+import pytest
+
 from beans.models import Bean, BeanId, Dep
 from beans_stalk.graph.layout import _assign_layers_late, build_dag
 from beans_stalk.graph.layouts import PROVIDERS, get_provider
@@ -89,3 +91,28 @@ class TestSugiyamaCompactProvider:
         pos_cmp = provider_cmp.compute(g, {"bean-a", "bean-b", "bean-c"})
         assert len(pos_std) == 3
         assert len(pos_cmp) == 3
+
+
+class TestGraphvizDotProvider:
+    def test_registered_if_pygraphviz_available(self):
+        pytest.importorskip("pygraphviz")
+        assert "graphviz_dot" in PROVIDERS
+
+    def test_compute_returns_positions(self):
+        pytest.importorskip("pygraphviz")
+        beans = [_bean("bean-00000001", "A"), _bean("bean-00000002", "B")]
+        deps = [_dep("bean-00000001", "bean-00000002")]
+        g = build_dag(beans, deps)
+        provider = get_provider("graphviz_dot")
+        positions = provider.compute(g, {"bean-00000001", "bean-00000002"})
+        assert "bean-00000001" in positions
+        assert "bean-00000002" in positions
+        # A should be above B (smaller Y)
+        assert positions["bean-00000001"][1] < positions["bean-00000002"][1]
+
+    def test_empty_graph(self):
+        pytest.importorskip("pygraphviz")
+        g = build_dag([], [])
+        provider = get_provider("graphviz_dot")
+        positions = provider.compute(g, set())
+        assert positions == {}
