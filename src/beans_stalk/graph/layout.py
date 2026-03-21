@@ -179,6 +179,34 @@ def _sort_by_barycenter(
     layer.sort(key=barycenter)
 
 
+def _median(values: list[float]) -> float:
+    """Return the median of a list of floats."""
+    s = sorted(values)
+    n = len(s)
+    if n % 2 == 1:
+        return s[n // 2]
+    return (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _global_center_shift(
+    positions: dict[str, tuple[float, float]],
+    sizes: dict[str, tuple[float, float]],
+    default_size: tuple[float, float],
+) -> None:
+    """Shift all positions so the graph bounding box is centered at x=0."""
+    if not positions:
+        return
+    all_xs = []
+    all_rights = []
+    for nid, (x, _) in positions.items():
+        all_xs.append(x)
+        all_rights.append(x + sizes.get(nid, default_size)[0])
+    global_center = (min(all_xs) + max(all_rights)) / 2
+    for nid in positions:
+        x, y = positions[nid]
+        positions[nid] = (x - global_center, y)
+
+
 def _refine_x_positions(
     graph: nx.DiGraph,
     layers: list[list[str]],
@@ -189,14 +217,18 @@ def _refine_x_positions(
 ) -> dict[str, tuple[float, float]]:
     """Shift nodes toward connected neighbors to straighten edges.
 
-    Virtual nodes (edge routing points) use stronger attraction to keep edges
-    straight. Real nodes use gentler damping to avoid disrupting cluster spacing.
+    Uses median neighbor position (robust to outlier nodes pulling everything
+    sideways). Virtual nodes use stronger attraction for straighter edges.
+    Re-centers globally after each iteration to prevent drift.
     """
     real_damping = 0.3
     virtual_damping = 0.7
 
-    for _ in range(12):
-        for layer in layers:
+    for iteration in range(12):
+        # Alternate sweep direction each iteration to avoid directional bias
+        layer_order = layers if iteration % 2 == 0 else reversed(layers)
+
+        for layer in layer_order:
             if not layer:
                 continue
             layer_nodes = sorted(layer, key=lambda n: positions[n][0])
@@ -210,11 +242,12 @@ def _refine_x_positions(
                 neighbors = list(graph.predecessors(node)) + list(graph.successors(node))
                 connected = [n for n in neighbors if n in positions]
                 if connected:
-                    avg_center = sum(
+                    neighbor_centers = [
                         positions[n][0] + sizes.get(n, default_size)[0] / 2
                         for n in connected
-                    ) / len(connected)
-                    target_x = avg_center - w / 2
+                    ]
+                    median_center = _median(neighbor_centers)
+                    target_x = median_center - w / 2
                     new_xs[node] = current_x + (target_x - current_x) * damping
                 else:
                     new_xs[node] = current_x
@@ -238,17 +271,8 @@ def _refine_x_positions(
             for n in layer_nodes:
                 positions[n] = (new_xs[n], positions[n][1])
 
-    # Global centering — single shift for the entire graph, preserving cluster gaps
-    all_xs = []
-    all_rights = []
-    for nid, (x, _y) in positions.items():
-        all_xs.append(x)
-        all_rights.append(x + sizes.get(nid, default_size)[0])
-    if all_xs:
-        global_center = (min(all_xs) + max(all_rights)) / 2
-        for nid in positions:
-            x, y = positions[nid]
-            positions[nid] = (x - global_center, y)
+        # Re-center after each iteration to prevent drift
+        _global_center_shift(positions, sizes, default_size)
 
     return positions
 
