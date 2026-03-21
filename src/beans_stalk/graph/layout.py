@@ -207,6 +207,67 @@ def _global_center_shift(
         positions[nid] = (x - global_center, y)
 
 
+def _sweep_layer(
+    graph: nx.DiGraph,
+    layer: list[str],
+    positions: dict[str, tuple[float, float]],
+    sizes: dict[str, tuple[float, float]],
+    default_size: tuple[float, float],
+    virtual_ids: set[str],
+    direction: str,
+):
+    """Position nodes in a layer based on connected nodes in the reference direction.
+
+    direction='down': use predecessors (parent positions determine child positions)
+    direction='up': use successors (child positions gently adjust parent positions)
+    """
+    real_damping = 0.5 if direction == "down" else 0.08
+    virtual_damping = 0.8 if direction == "down" else 0.3
+
+    layer_nodes = sorted(layer, key=lambda n: positions[n][0])
+    new_xs: dict[str, float] = {}
+
+    for node in layer_nodes:
+        w = sizes.get(node, default_size)[0]
+        current_x = positions[node][0]
+        damping = virtual_damping if node in virtual_ids else real_damping
+
+        if direction == "down":
+            ref_nodes = [p for p in graph.predecessors(node) if p in positions]
+        else:
+            ref_nodes = [s for s in graph.successors(node) if s in positions]
+
+        if ref_nodes:
+            ref_centers = [
+                positions[n][0] + sizes.get(n, default_size)[0] / 2
+                for n in ref_nodes
+            ]
+            target_center = _median(ref_centers)
+            target_x = target_center - w / 2
+            new_xs[node] = current_x + (target_x - current_x) * damping
+        else:
+            new_xs[node] = current_x
+
+    # Resolve overlaps left to right
+    for i in range(1, len(layer_nodes)):
+        prev = layer_nodes[i - 1]
+        curr = layer_nodes[i]
+        min_x = new_xs[prev] + sizes.get(prev, default_size)[0] + NODE_GAP
+        if new_xs[curr] < min_x:
+            new_xs[curr] = min_x
+
+    # Resolve overlaps right to left
+    for i in range(len(layer_nodes) - 2, -1, -1):
+        curr = layer_nodes[i]
+        nxt = layer_nodes[i + 1]
+        max_x = new_xs[nxt] - sizes.get(curr, default_size)[0] - NODE_GAP
+        if new_xs[curr] > max_x:
+            new_xs[curr] = max_x
+
+    for n in layer_nodes:
+        positions[n] = (new_xs[n], positions[n][1])
+
+
 def _refine_x_positions(
     graph: nx.DiGraph,
     layers: list[list[str]],
@@ -215,61 +276,22 @@ def _refine_x_positions(
     default_size: tuple[float, float],
     virtual_ids: set[str],
 ) -> dict[str, tuple[float, float]]:
-    """Shift nodes toward connected neighbors to straighten edges.
+    """Refine horizontal positions using directional sweeps.
 
-    Uses median neighbor position (robust to outlier nodes pulling everything
-    sideways). Virtual nodes use stronger attraction for straighter edges.
-    Re-centers globally after each iteration to prevent drift.
+    Forward sweep (top→bottom): children align under predecessors (strong pull).
+    Backward sweep (bottom→top): parents gently adjust toward successors (weak pull).
+    This prevents downstream drift while still allowing upward feedback.
     """
-    real_damping = 0.3
-    virtual_damping = 0.7
+    for _ in range(8):
+        # Forward sweep: top to bottom — children position under parents
+        for layer in layers:
+            if layer:
+                _sweep_layer(graph, layer, positions, sizes, default_size, virtual_ids, "down")
 
-    for iteration in range(12):
-        # Alternate sweep direction each iteration to avoid directional bias
-        layer_order = layers if iteration % 2 == 0 else reversed(layers)
-
-        for layer in layer_order:
-            if not layer:
-                continue
-            layer_nodes = sorted(layer, key=lambda n: positions[n][0])
-            new_xs: dict[str, float] = {}
-
-            for node in layer_nodes:
-                w = sizes.get(node, default_size)[0]
-                current_x = positions[node][0]
-                damping = virtual_damping if node in virtual_ids else real_damping
-
-                neighbors = list(graph.predecessors(node)) + list(graph.successors(node))
-                connected = [n for n in neighbors if n in positions]
-                if connected:
-                    neighbor_centers = [
-                        positions[n][0] + sizes.get(n, default_size)[0] / 2
-                        for n in connected
-                    ]
-                    median_center = _median(neighbor_centers)
-                    target_x = median_center - w / 2
-                    new_xs[node] = current_x + (target_x - current_x) * damping
-                else:
-                    new_xs[node] = current_x
-
-            # Resolve overlaps left to right
-            for i in range(1, len(layer_nodes)):
-                prev = layer_nodes[i - 1]
-                curr = layer_nodes[i]
-                min_x = new_xs[prev] + sizes.get(prev, default_size)[0] + NODE_GAP
-                if new_xs[curr] < min_x:
-                    new_xs[curr] = min_x
-
-            # Resolve overlaps right to left
-            for i in range(len(layer_nodes) - 2, -1, -1):
-                curr = layer_nodes[i]
-                nxt = layer_nodes[i + 1]
-                max_x = new_xs[nxt] - sizes.get(curr, default_size)[0] - NODE_GAP
-                if new_xs[curr] > max_x:
-                    new_xs[curr] = max_x
-
-            for n in layer_nodes:
-                positions[n] = (new_xs[n], positions[n][1])
+        # Backward sweep: bottom to top — parents gently adjust toward children
+        for layer in reversed(layers):
+            if layer:
+                _sweep_layer(graph, layer, positions, sizes, default_size, virtual_ids, "up")
 
         # Re-center after each iteration to prevent drift
         _global_center_shift(positions, sizes, default_size)
@@ -277,34 +299,22 @@ def _refine_x_positions(
     return positions
 
 
-def compute_layout(
-    graph: nx.DiGraph,
-    visible_ids: set[str],
-    node_sizes: dict[str, tuple[float, float]] | None = None,
+COMPONENT_GAP = 80  # horizontal gap between disconnected components
+
+
+def _layout_single_component(
+    subgraph: nx.DiGraph,
+    sizes: dict[str, tuple[float, float]],
+    default_size: tuple[float, float],
 ) -> dict[str, tuple[float, float]]:
-    """Compute node positions using a custom Sugiyama-style layered layout."""
-    if not visible_ids:
-        return {}
-
-    subgraph = graph.subgraph(visible_ids).copy()
-    if len(subgraph) == 0:
-        return {}
-
-    sizes = dict(node_sizes) if node_sizes else {}
-    default_size = (140.0, 30.0)
-
-    # Step 1: Assign layers
+    """Layout a single connected component using Sugiyama-style algorithm."""
     layer_assignment = _assign_layers(subgraph)
-
-    # Step 2: Add virtual nodes for long edges
     aug_graph, layer_assignment, virtual_ids = _add_virtual_nodes(subgraph, layer_assignment)
     for vid in virtual_ids:
         sizes[vid] = (VIRTUAL_WIDTH, 0)
 
-    # Step 3: Order within layers to reduce crossings
     layers = _order_within_layers(aug_graph, layer_assignment)
 
-    # Step 4: Compute initial coordinates
     positions = {}
     y = 0.0
     for layer in layers:
@@ -326,11 +336,70 @@ def compute_layout(
 
         y += layer_height + LAYER_GAP
 
-    # Step 5: Refine horizontal positions
     positions = _refine_x_positions(aug_graph, layers, positions, sizes, default_size, virtual_ids)
 
-    # Strip virtual nodes from output
     return {nid: pos for nid, pos in positions.items() if nid not in virtual_ids}
+
+
+def compute_layout(
+    graph: nx.DiGraph,
+    visible_ids: set[str],
+    node_sizes: dict[str, tuple[float, float]] | None = None,
+) -> dict[str, tuple[float, float]]:
+    """Compute node positions using a custom Sugiyama-style layered layout.
+
+    Disconnected components are laid out independently and packed side by side.
+    """
+    if not visible_ids:
+        return {}
+
+    subgraph = graph.subgraph(visible_ids).copy()
+    if len(subgraph) == 0:
+        return {}
+
+    sizes = dict(node_sizes) if node_sizes else {}
+    default_size = (140.0, 30.0)
+
+    # Detect weakly connected components
+    undirected = subgraph.to_undirected()
+    components = list(nx.connected_components(undirected))
+
+    if len(components) == 1:
+        return _layout_single_component(subgraph, sizes, default_size)
+
+    # Layout each component independently, then pack side by side
+    # Sort components: largest first (most nodes) for visual stability
+    components.sort(key=len, reverse=True)
+
+    all_positions: dict[str, tuple[float, float]] = {}
+    current_x = 0.0
+
+    for comp_nodes in components:
+        comp_subgraph = subgraph.subgraph(comp_nodes).copy()
+        comp_sizes = {nid: sizes.get(nid, default_size) for nid in comp_nodes}
+        comp_positions = _layout_single_component(comp_subgraph, comp_sizes, default_size)
+
+        if not comp_positions:
+            continue
+
+        # Find the bounding box of this component
+        comp_xs = [x for x, _ in comp_positions.values()]
+        comp_rights = [x + sizes.get(nid, default_size)[0] for nid, (x, _) in comp_positions.items()]
+        comp_left = min(comp_xs)
+        comp_right = max(comp_rights)
+
+        # Shift component so its left edge starts at current_x
+        shift_x = current_x - comp_left
+        for nid in comp_positions:
+            x, y = comp_positions[nid]
+            all_positions[nid] = (x + shift_x, y)
+
+        current_x += (comp_right - comp_left) + COMPONENT_GAP
+
+    # Global centering
+    _global_center_shift(all_positions, sizes, default_size)
+
+    return all_positions
 
 
 def stabilize_layout(
