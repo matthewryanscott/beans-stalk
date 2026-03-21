@@ -9,7 +9,7 @@ Replace the single hardcoded layout algorithm with a pluggable system. A dropdow
 
 ## Layout Provider Interface
 
-Each algorithm implements:
+Each algorithm is a Python module with three module-level names:
 
 ```python
 NAME: str   # Display name for dropdown (e.g. "Sugiyama")
@@ -21,6 +21,8 @@ def compute(
     node_sizes: dict[str, tuple[float, float]] | None,
 ) -> dict[str, tuple[float, float]]
 ```
+
+This is a module-level contract — no base class or Protocol needed. The registry imports each module and accesses `.NAME`, `.KEY`, `.compute` directly. Simple, no ceremony.
 
 Same contract as the current `compute_layout()`. Input: full DAG, set of visible node IDs, optional size hints. Output: `{node_id: (x, y)}` positions in screen coordinates (Y increases downward).
 
@@ -42,7 +44,7 @@ src/beans_stalk/graph/
     layout.py                # Shared utilities: build_dag(), stabilize_layout()
 ```
 
-`layout.py` retains `build_dag()` and `stabilize_layout()` which all providers use. Algorithm-specific code (layer assignment, ordering, x-refinement) moves into the `layouts/` subpackage.
+`layout.py` retains `build_dag()`, `stabilize_layout()`, and all shared Sugiyama internals (`_assign_layers`, `_assign_layers_late`, `_add_virtual_nodes`, `_order_within_layers`, `_refine_x_positions`, `_layout_single_component`, component-packing logic, spacing constants). Both Sugiyama providers import these shared functions from `layout.py`. Only the top-level `compute()` orchestration and the choice of layer-assignment function differ between variants.
 
 ## Algorithms
 
@@ -72,7 +74,9 @@ Hidden from the dropdown if `import pygraphviz` fails at startup.
 
 ## UI: Algorithm Dropdown
 
-A `QComboBox` added to the right side of the `BreadcrumbBar`'s horizontal layout. Populated from the registry at startup (only showing providers that loaded successfully).
+A `QComboBox` added to the right side of the `BreadcrumbBar`'s horizontal layout, after the stretch that pushes breadcrumb buttons left. The combo box is NOT managed by `_rebuild()` — it is created once in `__init__` and persists across breadcrumb navigation. `_rebuild()` only tears down and recreates the breadcrumb buttons/separators, leaving the combo box untouched.
+
+Populated from the registry at startup (only showing providers that loaded successfully).
 
 ### Signal Flow
 
@@ -89,7 +93,7 @@ A `QComboBox` added to the right side of the `BreadcrumbBar`'s horizontal layout
 layout_algorithm: str = "sugiyama"
 ```
 
-Persisted in `beans-stalk.toml` under `layout_algorithm`.
+Persisted in `beans-stalk.toml` under `layout_algorithm`. Both `load()` and `save()` must be updated to handle this field. If the config contains an unknown algorithm key, `get_provider()` falls back to `"sugiyama"` and the dropdown shows the fallback selection.
 
 ### DagScene Changes
 
@@ -109,7 +113,7 @@ Persisted in `beans-stalk.toml` under `layout_algorithm`.
 
 ### Modified Files
 
-- `src/beans_stalk/graph/layout.py` — remove algorithm code, keep `build_dag()`, `stabilize_layout()`, shared constants
+- `src/beans_stalk/graph/layout.py` — keep `build_dag()`, `stabilize_layout()`, and shared Sugiyama internals; remove top-level `compute_layout()`
 - `src/beans_stalk/ui/breadcrumb.py` — add `QComboBox` and `layout_changed` signal
 - `src/beans_stalk/ui/dag_scene.py` — use provider from registry instead of hardcoded import
 - `src/beans_stalk/ui/main_window.py` — wire dropdown signal, save config, set provider on scene
