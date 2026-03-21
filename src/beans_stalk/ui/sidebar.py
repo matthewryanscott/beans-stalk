@@ -116,11 +116,11 @@ class Sidebar(QWidget):
         self._ref_id_edit = QLineEdit()
         layout.addWidget(self._ref_id_edit)
 
-        # Body
+        # Body — stretches to fill available vertical space
         layout.addWidget(QLabel("Body"))
         self._body_edit = QTextEdit()
         self._body_edit.setMinimumHeight(80)
-        layout.addWidget(self._body_edit)
+        layout.addWidget(self._body_edit, 1)  # stretch factor 1
 
         # Save button
         self._save_btn = QPushButton("Save")
@@ -128,8 +128,10 @@ class Sidebar(QWidget):
         layout.addWidget(self._save_btn)
 
         # Close bean section (hidden when viewing closed beans)
+        self._close_spacer = QWidget()
+        self._close_spacer.setFixedHeight(16)
+        layout.addWidget(self._close_spacer)
         self._close_group = QGroupBox("Close Bean")
-        self._close_group.setContentsMargins(0, 12, 0, 0)
         close_layout = QVBoxLayout(self._close_group)
         close_layout.addWidget(QLabel("Reason"))
         self._close_reason_edit = QLineEdit()
@@ -178,7 +180,9 @@ class Sidebar(QWidget):
         self._color_btn.setStyleSheet(f"background-color: {color};")
 
         # Hide close panel for already-closed beans
-        self._close_group.setVisible(bean.status != "closed")
+        show_close = bean.status != "closed"
+        self._close_group.setVisible(show_close)
+        self._close_spacer.setVisible(show_close)
 
 
     def start_new_bean(self, prefill: dict | None = None):
@@ -200,6 +204,7 @@ class Sidebar(QWidget):
         self._body_edit.setPlainText(self._pre_filled.get("body", ""))
         self._save_btn.setText("Create")
         self._close_group.setVisible(False)
+        self._close_spacer.setVisible(False)
 
 
     def show_status(self, message: str):
