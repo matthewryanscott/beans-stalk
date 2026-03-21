@@ -52,6 +52,22 @@ class TestStalkConfig:
         assert color.startswith("#")
         assert len(color) == 7
 
+    def test_layout_algorithm_default(self, tmp_path):
+        config = StalkConfig.load(tmp_path)
+        assert config.layout_algorithm == "sugiyama"
+
+    def test_layout_algorithm_load(self, tmp_path):
+        toml_path = tmp_path / "beans-stalk.toml"
+        toml_path.write_text('layout_algorithm = "graphviz_dot"\n')
+        config = StalkConfig.load(tmp_path)
+        assert config.layout_algorithm == "graphviz_dot"
+
+    def test_layout_algorithm_save_roundtrip(self, tmp_path):
+        config = StalkConfig(layout_algorithm="sugiyama_compact")
+        config.save(tmp_path)
+        reloaded = StalkConfig.load(tmp_path)
+        assert reloaded.layout_algorithm == "sugiyama_compact"
+
     def test_get_color_for_none_assignee(self):
         config = StalkConfig(colors={})
         color = config.get_color(None)

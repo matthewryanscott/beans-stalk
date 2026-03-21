@@ -29,6 +29,7 @@ UNASSIGNED_COLOR = "#888888"
 class StalkConfig:
     fade_minutes: int = 5
     poll_interval_seconds: int = 2
+    layout_algorithm: str = "sugiyama"
     colors: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -41,6 +42,7 @@ class StalkConfig:
         return cls(
             fade_minutes=data.get("fade_minutes", 5),
             poll_interval_seconds=data.get("poll_interval_seconds", 2),
+            layout_algorithm=data.get("layout_algorithm", "sugiyama"),
             colors=dict(data.get("colors", {})),
         )
 
@@ -49,6 +51,7 @@ class StalkConfig:
         data = {
             "fade_minutes": self.fade_minutes,
             "poll_interval_seconds": self.poll_interval_seconds,
+            "layout_algorithm": self.layout_algorithm,
             "colors": self.colors,
         }
         with open(toml_path, "wb") as f:
