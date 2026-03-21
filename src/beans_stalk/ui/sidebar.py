@@ -68,57 +68,68 @@ class Sidebar(QWidget):
         container = QWidget()
         layout = QVBoxLayout(container)
 
-        # Title
+        # Title (editable)
         layout.addWidget(QLabel("Title"))
         self._title_edit = QLineEdit()
         layout.addWidget(self._title_edit)
 
-        # Type + Status side-by-side
+        # Type (editable for both edit and create) + Status (read-only display)
         type_status_row = QHBoxLayout()
         type_col = QVBoxLayout()
         type_col.addWidget(QLabel("Type"))
         self._type_combo = QComboBox()
-        self._type_combo.addItems(["task", "bug", "feature", "epic"])
+        self._type_combo.addItems(["task", "bug", "epic", "project"])
         type_col.addWidget(self._type_combo)
         type_status_row.addLayout(type_col)
         status_col = QVBoxLayout()
         status_col.addWidget(QLabel("Status"))
-        self._status_combo = QComboBox()
-        self._status_combo.addItems(["open", "in_progress", "closed"])
-        status_col.addWidget(self._status_combo)
+        self._status_label_field = QLabel()
+        self._status_label_field.setStyleSheet(
+            "color: #ccc; font-size: 12px; padding: 4px 2px;"
+        )
+        status_col.addWidget(self._status_label_field)
         type_status_row.addLayout(status_col)
         layout.addLayout(type_status_row)
 
-        # Priority
+        # Priority (editable)
         layout.addWidget(QLabel("Priority"))
         self._priority_spin = QSpinBox()
         self._priority_spin.setMinimum(0)
-        self._priority_spin.setMaximum(5)
+        self._priority_spin.setMaximum(4)
         self._priority_spin.setValue(2)
         layout.addWidget(self._priority_spin)
 
-        # Assignee with color button
+        # Assignee (read-only display with color button)
         layout.addWidget(QLabel("Assignee"))
         assignee_row = QHBoxLayout()
-        self._assignee_edit = QLineEdit()
-        assignee_row.addWidget(self._assignee_edit)
+        self._assignee_label = QLabel()
+        self._assignee_label.setStyleSheet(
+            "color: #ccc; font-size: 12px; padding: 4px 2px;"
+        )
+        assignee_row.addWidget(self._assignee_label, 1)
         self._color_btn = QPushButton()
         self._color_btn.setFixedSize(24, 24)
         self._color_btn.clicked.connect(self._pick_color)
         assignee_row.addWidget(self._color_btn)
         layout.addLayout(assignee_row)
 
-        # Parent ID
+        # Parent ID (editable)
         layout.addWidget(QLabel("Parent ID"))
         self._parent_edit = QLineEdit()
         layout.addWidget(self._parent_edit)
 
-        # Ref ID
-        layout.addWidget(QLabel("Ref ID"))
+        # Ref ID (editable at creation, read-only after)
+        self._ref_id_label_widget = QLabel("Ref ID")
+        layout.addWidget(self._ref_id_label_widget)
         self._ref_id_edit = QLineEdit()
         layout.addWidget(self._ref_id_edit)
+        self._ref_id_display = QLabel()
+        self._ref_id_display.setStyleSheet(
+            "color: #ccc; font-size: 12px; padding: 4px 2px;"
+        )
+        layout.addWidget(self._ref_id_display)
 
-        # Body — stretches to fill available vertical space
+        # Body — stretches to fill available vertical space (editable)
         layout.addWidget(QLabel("Body"))
         self._body_edit = QTextEdit()
         self._body_edit.setMinimumHeight(80)
@@ -194,17 +205,20 @@ class Sidebar(QWidget):
 
         self._title_edit.setText(bean.title)
         self._type_combo.setCurrentText(bean.type)
-        self._status_combo.setCurrentText(bean.status)
+        self._status_label_field.setText(bean.status)
         self._priority_spin.setValue(bean.priority)
-        self._assignee_edit.setText(bean.assignee or "")
+        self._assignee_label.setText(bean.assignee or "—")
         self._parent_edit.setText(str(bean.parent_id) if bean.parent_id else "")
-        self._ref_id_edit.setText(bean.ref_id or "")
+        self._ref_id_edit.setVisible(False)
+        self._ref_id_display.setVisible(True)
+        self._ref_id_display.setText(bean.ref_id or "—")
         self._body_edit.setPlainText(bean.body)
         self._save_btn.setText("Save")
 
         # Update color button
         color = self._config.get_color(bean.assignee)
         self._color_btn.setStyleSheet(f"background-color: {color};")
+        self._color_btn.setVisible(bean.assignee is not None)
 
         # Show/hide action panels based on status
         is_open = bean.status == "open"
@@ -234,10 +248,13 @@ class Sidebar(QWidget):
 
         self._title_edit.setText(self._pre_filled.get("title", ""))
         self._type_combo.setCurrentText(self._pre_filled.get("type", "task"))
-        self._status_combo.setCurrentText(self._pre_filled.get("status", "open"))
+        self._status_label_field.setText("open")
         self._priority_spin.setValue(self._pre_filled.get("priority", 2))
-        self._assignee_edit.setText(self._pre_filled.get("assignee", ""))
+        self._assignee_label.setText("—")
+        self._color_btn.setVisible(False)
         self._parent_edit.setText(self._pre_filled.get("parent_id", ""))
+        self._ref_id_edit.setVisible(True)
+        self._ref_id_display.setVisible(False)
         self._ref_id_edit.setText(self._pre_filled.get("ref_id", ""))
         self._body_edit.setPlainText(self._pre_filled.get("body", ""))
         self._save_btn.setText("Create")
@@ -257,16 +274,25 @@ class Sidebar(QWidget):
 
     def _collect_fields(self) -> dict:
         """Gather current field values into a dict."""
-        fields = {
-            "title": self._title_edit.text(),
-            "type": self._type_combo.currentText(),
-            "status": self._status_combo.currentText(),
-            "priority": self._priority_spin.value(),
-            "assignee": self._assignee_edit.text() or None,
-            "parent_id": self._parent_edit.text() or None,
-            "ref_id": self._ref_id_edit.text() or None,
-            "body": self._body_edit.toPlainText(),
-        }
+        if self._creating:
+            # At creation, all Bean fields are valid
+            fields = {
+                "title": self._title_edit.text(),
+                "type": self._type_combo.currentText(),
+                "priority": self._priority_spin.value(),
+                "parent_id": self._parent_edit.text() or None,
+                "ref_id": self._ref_id_edit.text() or None,
+                "body": self._body_edit.toPlainText(),
+            }
+        else:
+            # For updates, only BeanUpdate-compatible fields
+            fields = {
+                "title": self._title_edit.text(),
+                "type": self._type_combo.currentText(),
+                "priority": self._priority_spin.value(),
+                "parent_id": self._parent_edit.text() or None,
+                "body": self._body_edit.toPlainText(),
+            }
         return fields
 
     def _on_claim(self):
@@ -297,10 +323,10 @@ class Sidebar(QWidget):
             self.close_bean_requested.emit(str(self._current_bean.id), reason)
 
     def _pick_color(self):
-        """Open a color picker for the current assignee."""
-        assignee = self._assignee_edit.text()
-        if not assignee:
+        """Open a color picker for the current bean's assignee."""
+        if self._current_bean is None or not self._current_bean.assignee:
             return
+        assignee = self._current_bean.assignee
         current_color = QColor(self._config.get_color(assignee))
         color = QColorDialog.getColor(current_color, self, "Pick Assignee Color")
         if color.isValid():
@@ -308,4 +334,3 @@ class Sidebar(QWidget):
             self._config.colors[assignee] = hex_color
             self._color_btn.setStyleSheet(f"background-color: {hex_color};")
             self.color_changed.emit(assignee, hex_color)
-

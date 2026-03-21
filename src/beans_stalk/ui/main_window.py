@@ -247,18 +247,7 @@ class MainWindow(QMainWindow):
     @Slot(str, dict)
     def _on_save_bean(self, bean_id: str, fields: dict):
         try:
-            # assignee and ref_id aren't in BeanUpdate — update them via direct SQL
-            extra_fields = {}
-            for key in ("assignee", "ref_id"):
-                if key in fields:
-                    extra_fields[key] = fields.pop(key)
             self._store.update_bean(bean_id, **fields)
-            if extra_fields:
-                set_clause = ", ".join(f"{k} = ?" for k in extra_fields)
-                params = [*extra_fields.values(), bean_id]
-                conn = self._store.store.conn
-                with conn:
-                    conn.execute(f"UPDATE beans SET {set_clause} WHERE id = ?", params)
         except Exception as e:
             self._sidebar.show_status(str(e))
 

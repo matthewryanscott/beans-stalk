@@ -22,7 +22,7 @@ class TestSidebar:
         sidebar.show_bean(bean, [])
         assert sidebar._title_edit.text() == "My Task"
         assert sidebar._priority_spin.value() == 1
-        assert sidebar._assignee_edit.text() == "alice"
+        assert sidebar._assignee_label.text() == "alice"
         assert sidebar._body_edit.toPlainText() == "Description"
 
     def test_new_bean_mode_clears_fields(self, qtbot):
@@ -51,6 +51,10 @@ class TestSidebar:
             sidebar._save_btn.click()
         assert blocker.args[0] == bean.id
         assert blocker.args[1]["title"] == "Updated"
+        # BeanUpdate-only fields: no assignee, ref_id, or status
+        assert "assignee" not in blocker.args[1]
+        assert "ref_id" not in blocker.args[1]
+        assert "status" not in blocker.args[1]
 
     def test_create_emits_signal_for_new(self, qtbot):
         sidebar = Sidebar(StalkConfig())
@@ -67,3 +71,33 @@ class TestSidebar:
         sidebar.show_status("Something went wrong")
         assert sidebar._status_label.isVisible()
         assert sidebar._status_label.text() == "Something went wrong"
+
+    def test_status_read_only_for_existing(self, qtbot):
+        sidebar = Sidebar(StalkConfig())
+        qtbot.addWidget(sidebar)
+        bean = _bean(status="in_progress")
+        sidebar.show_bean(bean, [])
+        assert sidebar._status_label_field.text() == "in_progress"
+
+    def test_assignee_read_only_for_existing(self, qtbot):
+        sidebar = Sidebar(StalkConfig())
+        qtbot.addWidget(sidebar)
+        bean = _bean(assignee="bob")
+        sidebar.show_bean(bean, [])
+        assert sidebar._assignee_label.text() == "bob"
+
+    def test_ref_id_read_only_for_existing(self, qtbot):
+        sidebar = Sidebar(StalkConfig())
+        qtbot.addWidget(sidebar)
+        bean = _bean()
+        bean = Bean(id=bean.id, title="T", ref_id="GH-123")
+        sidebar.show_bean(bean, [])
+        assert sidebar._ref_id_display.text() == "GH-123"
+        assert not sidebar._ref_id_edit.isVisible()
+
+    def test_ref_id_editable_for_new(self, qtbot):
+        sidebar = Sidebar(StalkConfig())
+        qtbot.addWidget(sidebar)
+        sidebar.start_new_bean()
+        assert sidebar._ref_id_edit.isVisible()
+        assert not sidebar._ref_id_display.isVisible()
