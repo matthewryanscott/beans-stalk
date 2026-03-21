@@ -16,6 +16,7 @@ ANIMATION_DURATION_MS = 300
 
 class DagScene(QGraphicsScene):
     node_clicked = Signal(str)
+    selection_cleared = Signal()
     navigate_requested = Signal(object)
     dep_toggle_requested = Signal(str, str)
     dep_remove_requested = Signal(str, str)
@@ -65,6 +66,9 @@ class DagScene(QGraphicsScene):
             edge.highlighted = False
 
         self._selected_id = value
+
+        if value is None:
+            self.selection_cleared.emit()
 
         if value and value in self._nodes:
             self._nodes[value].setSelected(True)

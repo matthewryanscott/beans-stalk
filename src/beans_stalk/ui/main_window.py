@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
         self._breadcrumb.navigate_to.connect(self._on_breadcrumb_navigate)
         self._scene.navigate_requested.connect(self._on_scene_navigate)
         self._scene.node_clicked.connect(self._on_node_selected)
+        self._scene.selection_cleared.connect(self._sidebar.clear_selection)
         self._scene.dep_toggle_requested.connect(self._on_dep_toggle)
         self._scene.dep_remove_requested.connect(self._on_dep_remove)
         self._sidebar.save_requested.connect(self._on_save_bean)

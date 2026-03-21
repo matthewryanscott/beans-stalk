@@ -1,4 +1,4 @@
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QStackedWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -43,9 +44,24 @@ class Sidebar(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
 
+        self._stack = QStackedWidget()
+        outer_layout.addWidget(self._stack)
+
+        # Page 0: placeholder when no bean selected
+        placeholder = QWidget()
+        ph_layout = QVBoxLayout(placeholder)
+        ph_layout.addStretch()
+        ph_label = QLabel("Select or create a bean\nto see details")
+        ph_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ph_label.setStyleSheet("color: #888; font-size: 13px;")
+        ph_layout.addWidget(ph_label)
+        ph_layout.addStretch()
+        self._stack.addWidget(placeholder)
+
+        # Page 1: editor form
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        outer_layout.addWidget(scroll)
+        self._stack.addWidget(scroll)
 
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -131,12 +147,20 @@ class Sidebar(QWidget):
         layout.addStretch()
         scroll.setWidget(container)
 
+    def clear_selection(self):
+        """Show the placeholder — no bean selected."""
+        self._current_bean = None
+        self._current_deps = []
+        self._creating = False
+        self._stack.setCurrentIndex(0)
+
     def show_bean(self, bean: Bean, deps: list[Dep]):
         """Populate the editor with an existing bean's data."""
         self._current_bean = bean
         self._current_deps = deps
         self._creating = False
         self._status_label.setVisible(False)
+        self._stack.setCurrentIndex(1)
 
         self._title_edit.setText(bean.title)
         self._type_combo.setCurrentText(bean.type)
@@ -160,6 +184,7 @@ class Sidebar(QWidget):
         self._creating = True
         self._pre_filled = prefill or {}
         self._status_label.setVisible(False)
+        self._stack.setCurrentIndex(1)
 
         self._title_edit.setText(self._pre_filled.get("title", ""))
         self._type_combo.setCurrentText(self._pre_filled.get("type", "task"))
@@ -174,6 +199,7 @@ class Sidebar(QWidget):
 
     def show_status(self, message: str):
         """Display a status/error message."""
+        self._stack.setCurrentIndex(1)
         self._status_label.setText(message)
         self._status_label.setVisible(True)
 
