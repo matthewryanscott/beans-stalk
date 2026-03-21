@@ -15,10 +15,13 @@ from beans_stalk.ui.sidebar import Sidebar
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, beans_dir: Path, on_open_dir=None, parent=None):
+    def __init__(self, beans_dir: Path, on_open_dir=None, on_new_window=None,
+                 navigate_to: str | None = None, parent=None):
         super().__init__(parent)
         self._beans_dir = beans_dir
         self._on_open_dir = on_open_dir
+        self._on_new_window = on_new_window
+        self._initial_navigate_to = navigate_to
         self._db_path = beans_dir / "beans.db"
         self._config = StalkConfig.load(beans_dir)
         self._store = StalkStore(self._db_path)
@@ -86,6 +89,7 @@ class MainWindow(QMainWindow):
         self._view.new_blocked_by_requested.connect(
             lambda bid: self._sidebar.start_new_bean({"_add_blocked_by": bid})
         )
+        self._view.view_in_new_window_requested.connect(self._on_view_in_new_window)
 
     def _setup_menus(self):
         file_menu = self.menuBar().addMenu("File")
@@ -182,8 +186,16 @@ class MainWindow(QMainWindow):
         first_load = not self._beans
         self._beans = beans
         self._deps = deps
+        if first_load and self._initial_navigate_to:
+            # Navigate to the requested parent on first load
+            parent_id = self._initial_navigate_to
+            self._initial_navigate_to = None
+            bean = next((b for b in beans if b.id == parent_id), None)
+            if bean:
+                title = bean.title
+                self._breadcrumb.push(parent_id, title)
+                self._scene.current_parent_id = parent_id
         if first_load:
-            # Restore show_completed before first snapshot
             state = self._config.viewports.get(self._viewport_key(), {})
             show = state.get("show_completed", False)
             self._scene.show_completed = show
@@ -272,6 +284,11 @@ class MainWindow(QMainWindow):
             self._store.add_dep(from_id, to_id)
         except Exception as e:
             self._sidebar.show_status(str(e))
+
+    @Slot(str)
+    def _on_view_in_new_window(self, bean_id: str):
+        if self._on_new_window:
+            self._on_new_window(str(self._beans_dir), bean_id)
 
     @Slot(str)
     def _on_layout_changed(self, key: str):

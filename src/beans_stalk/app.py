@@ -16,6 +16,7 @@ class StalkApp:
         self._qt_app: QApplication | None = None
         self._ipc_server: IpcServer | None = None
         self._windows: dict[str, MainWindow] = {}
+        self._extra_windows: list[MainWindow] = []
 
     def open_beans_dir(self, beans_dir_path: str):
         """Open a window for a beans directory, or focus existing."""
@@ -31,10 +32,31 @@ class StalkApp:
         if not db_path.exists():
             return
 
-        win = MainWindow(beans_dir, on_open_dir=self.open_beans_dir)
+        win = MainWindow(beans_dir, on_open_dir=self.open_beans_dir,
+                         on_new_window=self.open_new_window)
         win.destroyed.connect(lambda: self._windows.pop(resolved, None))
         self._windows[resolved] = win
         win.show()
+
+    def open_new_window(self, beans_dir_path: str, navigate_to: str):
+        """Open an additional window for a beans directory, navigated to a specific node."""
+        beans_dir = Path(beans_dir_path).resolve()
+        db_path = beans_dir / "beans.db"
+        if not db_path.exists():
+            return
+
+        win = MainWindow(beans_dir, on_open_dir=self.open_beans_dir,
+                         on_new_window=self.open_new_window,
+                         navigate_to=navigate_to)
+        self._extra_windows.append(win)
+        win.destroyed.connect(lambda: self._remove_extra_window(win))
+        win.show()
+
+    def _remove_extra_window(self, win):
+        try:
+            self._extra_windows.remove(win)
+        except ValueError:
+            pass
 
     def run(self, initial_beans_dir: str):
         self._qt_app = QApplication(sys.argv)
@@ -65,6 +87,8 @@ class StalkApp:
         if self._ipc_server:
             self._ipc_server.stop()
         for win in list(self._windows.values()):
+            win.close()
+        for win in list(self._extra_windows):
             win.close()
         if self._qt_app:
             self._qt_app.quit()

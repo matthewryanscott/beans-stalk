@@ -15,6 +15,7 @@ class DagView(QGraphicsView):
     new_child_requested = Signal(str)
     new_blocker_requested = Signal(str)
     new_blocked_by_requested = Signal(str)
+    view_in_new_window_requested = Signal(str)
 
     def __init__(self, scene: DagScene, parent=None):
         super().__init__(scene, parent)
@@ -171,6 +172,8 @@ class DagView(QGraphicsView):
         menu = QMenu(self)
         if isinstance(item, BeanNode):
             bean_id = item.bean.id
+            menu.addAction("View in new window", lambda: self.view_in_new_window_requested.emit(bean_id))
+            menu.addSeparator()
             menu.addAction("New child bean", lambda: self.new_child_requested.emit(bean_id))
             menu.addAction("New bean blocked by this", lambda: self.new_blocker_requested.emit(bean_id))
             menu.addAction("New bean that blocks this", lambda: self.new_blocked_by_requested.emit(bean_id))
