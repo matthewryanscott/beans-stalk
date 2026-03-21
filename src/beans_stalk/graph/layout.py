@@ -4,7 +4,7 @@ from beans.models import Bean, Dep
 # Spacing constants (pixels)
 LAYER_GAP = 60   # vertical space between layers
 NODE_GAP = 24    # horizontal space between nodes in a layer
-VIRTUAL_WIDTH = 8  # width allocated for virtual routing nodes
+VIRTUAL_WIDTH = 24  # width allocated for virtual routing nodes (edge buffer)
 
 
 def build_dag(beans: list[Bean], deps: list[Dep]) -> nx.DiGraph:
@@ -90,7 +90,7 @@ def _order_within_layers(
     best_layers = [list(layer) for layer in layers]
     best_crossings = _count_all_crossings(graph, best_layers)
 
-    for _ in range(12):
+    for _ in range(24):
         # Forward sweep
         for i in range(1, len(layers)):
             _sort_by_barycenter(graph, layers[i], layers[i - 1], predecessors=True)
@@ -98,12 +98,37 @@ def _order_within_layers(
         for i in range(len(layers) - 2, -1, -1):
             _sort_by_barycenter(graph, layers[i], layers[i + 1], predecessors=False)
 
+        # Adjacent exchange pass — swap neighbors if it reduces crossings
+        for i in range(len(layers) - 1):
+            _adjacent_exchange(graph, layers[i], layers[i + 1])
+        for i in range(len(layers) - 2, -1, -1):
+            _adjacent_exchange(graph, layers[i + 1], layers[i])
+
         crossings = _count_all_crossings(graph, layers)
         if crossings < best_crossings:
             best_crossings = crossings
             best_layers = [list(layer) for layer in layers]
 
     return best_layers
+
+
+def _adjacent_exchange(
+    graph: nx.DiGraph,
+    layer: list[str],
+    neighbor_layer: list[str],
+):
+    """Swap adjacent nodes in `layer` if it reduces crossings with `neighbor_layer`."""
+    improved = True
+    while improved:
+        improved = False
+        for i in range(len(layer) - 1):
+            before = _count_crossings(graph, layer, neighbor_layer)
+            layer[i], layer[i + 1] = layer[i + 1], layer[i]
+            after = _count_crossings(graph, layer, neighbor_layer)
+            if after < before:
+                improved = True
+            else:
+                layer[i], layer[i + 1] = layer[i + 1], layer[i]
 
 
 def _count_crossings(graph: nx.DiGraph, layer_a: list[str], layer_b: list[str]) -> int:
@@ -160,15 +185,17 @@ def _refine_x_positions(
     positions: dict[str, tuple[float, float]],
     sizes: dict[str, tuple[float, float]],
     default_size: tuple[float, float],
+    virtual_ids: set[str],
 ) -> dict[str, tuple[float, float]]:
-    """Shift nodes toward connected neighbors while maintaining centered balance.
+    """Shift nodes toward connected neighbors to straighten edges.
 
-    Blends neighbor attraction (70%) with initial centered position (30%)
-    to prevent layout drift.
+    Virtual nodes (edge routing points) use stronger attraction to keep edges
+    straight. Real nodes use gentler damping to avoid disrupting cluster spacing.
     """
-    damping = 0.3
+    real_damping = 0.3
+    virtual_damping = 0.7
 
-    for _ in range(6):
+    for _ in range(12):
         for layer in layers:
             if not layer:
                 continue
@@ -178,6 +205,7 @@ def _refine_x_positions(
             for node in layer_nodes:
                 w = sizes.get(node, default_size)[0]
                 current_x = positions[node][0]
+                damping = virtual_damping if node in virtual_ids else real_damping
 
                 neighbors = list(graph.predecessors(node)) + list(graph.successors(node))
                 connected = [n for n in neighbors if n in positions]
@@ -210,17 +238,17 @@ def _refine_x_positions(
             for n in layer_nodes:
                 positions[n] = (new_xs[n], positions[n][1])
 
-    # Re-center each layer so the layout stays balanced
-    for layer in layers:
-        if not layer:
-            continue
-        xs = [positions[n][0] for n in layer]
-        widths = [sizes.get(n, default_size)[0] for n in layer]
-        layer_left = min(xs)
-        layer_right = max(x + w for x, w in zip(xs, widths))
-        layer_center = (layer_left + layer_right) / 2
-        for n in layer:
-            positions[n] = (positions[n][0] - layer_center, positions[n][1])
+    # Global centering — single shift for the entire graph, preserving cluster gaps
+    all_xs = []
+    all_rights = []
+    for nid, (x, _y) in positions.items():
+        all_xs.append(x)
+        all_rights.append(x + sizes.get(nid, default_size)[0])
+    if all_xs:
+        global_center = (min(all_xs) + max(all_rights)) / 2
+        for nid in positions:
+            x, y = positions[nid]
+            positions[nid] = (x - global_center, y)
 
     return positions
 
@@ -275,7 +303,7 @@ def compute_layout(
         y += layer_height + LAYER_GAP
 
     # Step 5: Refine horizontal positions
-    positions = _refine_x_positions(aug_graph, layers, positions, sizes, default_size)
+    positions = _refine_x_positions(aug_graph, layers, positions, sizes, default_size, virtual_ids)
 
     # Strip virtual nodes from output
     return {nid: pos for nid, pos in positions.items() if nid not in virtual_ids}

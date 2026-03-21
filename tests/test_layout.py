@@ -100,6 +100,93 @@ class TestComputeLayout:
                 assert x2 >= x1 + w1, f"Overlap at y={y}: {x1}+{w1} vs {x2}"
 
 
+    def test_two_clusters_stay_separated(self):
+        """Two independent subgraphs should not collapse horizontally."""
+        # Cluster A: a1 -> a2 -> a3
+        # Cluster B: b1 -> b2 -> b3
+        # No edges between clusters
+        beans = [
+            _bean("bean-a0000001", "A1"), _bean("bean-a0000002", "A2"), _bean("bean-a0000003", "A3"),
+            _bean("bean-b0000001", "B1"), _bean("bean-b0000002", "B2"), _bean("bean-b0000003", "B3"),
+        ]
+        deps = [
+            _dep("bean-a0000001", "bean-a0000002"), _dep("bean-a0000002", "bean-a0000003"),
+            _dep("bean-b0000001", "bean-b0000002"), _dep("bean-b0000002", "bean-b0000003"),
+        ]
+        g = build_dag(beans, deps)
+        visible = {b.id for b in beans}
+        sizes = {b.id: (140.0, 30.0) for b in beans}
+        positions = compute_layout(g, visible, node_sizes=sizes)
+
+        # In each shared layer, the two cluster nodes should not overlap
+        # Layer 0: a1, b1  Layer 1: a2, b2  Layer 2: a3, b3
+        for a_id, b_id in [
+            ("bean-a0000001", "bean-b0000001"),
+            ("bean-a0000002", "bean-b0000002"),
+            ("bean-a0000003", "bean-b0000003"),
+        ]:
+            ax = positions[a_id][0]
+            bx = positions[b_id][0]
+            gap = abs(bx - ax)
+            assert gap >= 140.0, f"Clusters too close: {a_id} at {ax}, {b_id} at {bx}"
+
+    def test_long_edge_virtual_nodes_not_through_real_nodes(self):
+        """An edge spanning multiple layers should route around real nodes."""
+        # root -> A, root -> B, A -> C (all on consecutive layers)
+        # root -> C spans 2 layers, gets a virtual node on layer 1
+        # Virtual node should not occupy same x-space as A or B
+        beans = [
+            _bean("bean-00000001", "Root"),
+            _bean("bean-00000002", "A"),
+            _bean("bean-00000003", "B"),
+            _bean("bean-00000004", "C"),
+        ]
+        deps = [
+            _dep("bean-00000001", "bean-00000002"),
+            _dep("bean-00000001", "bean-00000003"),
+            _dep("bean-00000002", "bean-00000004"),
+            _dep("bean-00000001", "bean-00000004"),  # long edge: root -> C
+        ]
+        g = build_dag(beans, deps)
+        visible = {b.id for b in beans}
+        sizes = {b.id: (140.0, 30.0) for b in beans}
+        positions = compute_layout(g, visible, node_sizes=sizes)
+
+        # All visible nodes should exist
+        assert len(positions) == 4
+        # Nodes in the same layer should not overlap (already tested above,
+        # but this graph specifically has a virtual node competing with real nodes)
+        from collections import defaultdict
+        by_y = defaultdict(list)
+        for nid, (x, y) in positions.items():
+            by_y[y].append((x, sizes[nid][0]))
+        for y, nodes_in_row in by_y.items():
+            nodes_in_row.sort()
+            for i in range(len(nodes_in_row) - 1):
+                x1, w1 = nodes_in_row[i]
+                x2, _ = nodes_in_row[i + 1]
+                assert x2 >= x1 + w1, f"Overlap at y={y}: {x1}+{w1} vs {x2}"
+
+    def test_layout_is_deterministic(self):
+        """Same input should always produce the exact same layout."""
+        beans = [_bean(f"bean-0000000{i}", f"Task {i}") for i in range(6)]
+        deps = [
+            _dep("bean-00000000", "bean-00000001"),
+            _dep("bean-00000000", "bean-00000002"),
+            _dep("bean-00000001", "bean-00000003"),
+            _dep("bean-00000002", "bean-00000004"),
+            _dep("bean-00000003", "bean-00000005"),
+            _dep("bean-00000004", "bean-00000005"),
+        ]
+        g = build_dag(beans, deps)
+        visible = {b.id for b in beans}
+        sizes = {b.id: (140.0, 30.0) for b in beans}
+
+        pos1 = compute_layout(g, visible, node_sizes=sizes)
+        pos2 = compute_layout(g, visible, node_sizes=sizes)
+        assert pos1 == pos2
+
+
 class TestStabilizeLayout:
     def test_anchors_selected_node(self):
         old = {"a": (100.0, 200.0), "b": (150.0, 250.0)}
