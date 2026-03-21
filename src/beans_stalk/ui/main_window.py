@@ -272,7 +272,9 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_release_bean(self, bean_id: str):
         try:
-            self._store.release_bean(bean_id, "")
+            bean = next((b for b in self._beans if b.id == bean_id), None)
+            actor = bean.assignee if bean else ""
+            self._store.release_bean(bean_id, actor)
         except Exception as e:
             self._sidebar.show_status(str(e))
 
