@@ -123,19 +123,30 @@ class MainWindow(QMainWindow):
 
     def _save_viewport(self):
         key = self._viewport_key()
-        self._config.viewports[key] = self._view.get_viewport_state()
+        state = self._view.get_viewport_state()
+        state["show_completed"] = self._scene.show_completed
+        self._config.viewports[key] = state
 
     def _restore_viewport(self):
         key = self._viewport_key()
         state = self._config.viewports.get(key)
         if state:
             self._view.restore_viewport_state(state)
+            show = state.get("show_completed", False)
+            self._scene.show_completed = show
+            self._toggle_completed_action.setChecked(show)
 
     def _apply_navigation(self, parent_id):
         """Update scene to show a parent level. Does NOT touch breadcrumb."""
         self._save_viewport()
         self._scene.selected_id = None
         self._scene.current_parent_id = parent_id
+        # Restore show_completed before snapshot so the correct beans are visible
+        key = parent_id if parent_id is not None else "root"
+        state = self._config.viewports.get(key, {})
+        show = state.get("show_completed", False)
+        self._scene.show_completed = show
+        self._toggle_completed_action.setChecked(show)
         self._scene.update_snapshot(self._beans, self._deps)
         self._restore_viewport()
 
@@ -170,6 +181,12 @@ class MainWindow(QMainWindow):
         first_load = not self._beans
         self._beans = beans
         self._deps = deps
+        if first_load:
+            # Restore show_completed before first snapshot
+            state = self._config.viewports.get(self._viewport_key(), {})
+            show = state.get("show_completed", False)
+            self._scene.show_completed = show
+            self._toggle_completed_action.setChecked(show)
         self._scene.update_snapshot(beans, deps)
         if first_load:
             self._restore_viewport()
