@@ -77,6 +77,8 @@ class MainWindow(QMainWindow):
         self._scene.dep_remove_requested.connect(self._on_dep_remove)
         self._sidebar.save_requested.connect(self._on_save_bean)
         self._sidebar.close_bean_requested.connect(self._on_close_bean)
+        self._sidebar.claim_requested.connect(self._on_claim_bean)
+        self._sidebar.release_requested.connect(self._on_release_bean)
         self._sidebar.create_bean_requested.connect(self._on_create_bean)
         self._sidebar.add_dep_requested.connect(self._on_add_dep)
         self._sidebar.remove_dep_requested.connect(self._on_dep_remove)
@@ -257,6 +259,20 @@ class MainWindow(QMainWindow):
                 conn = self._store.store.conn
                 with conn:
                     conn.execute(f"UPDATE beans SET {set_clause} WHERE id = ?", params)
+        except Exception as e:
+            self._sidebar.show_status(str(e))
+
+    @Slot(str, str)
+    def _on_claim_bean(self, bean_id: str, actor: str):
+        try:
+            self._store.claim_bean(bean_id, actor)
+        except Exception as e:
+            self._sidebar.show_status(str(e))
+
+    @Slot(str)
+    def _on_release_bean(self, bean_id: str):
+        try:
+            self._store.release_bean(bean_id, "")
         except Exception as e:
             self._sidebar.show_status(str(e))
 

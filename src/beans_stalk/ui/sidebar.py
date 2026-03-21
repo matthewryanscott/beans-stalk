@@ -25,6 +25,8 @@ class Sidebar(QWidget):
 
     save_requested = Signal(str, dict)
     close_bean_requested = Signal(str, str)
+    claim_requested = Signal(str, str)  # bean_id, actor
+    release_requested = Signal(str)  # bean_id
     create_bean_requested = Signal(dict)
     add_dep_requested = Signal(str, str)
     remove_dep_requested = Signal(str, str)
@@ -127,6 +129,31 @@ class Sidebar(QWidget):
         self._save_btn.clicked.connect(self._on_save)
         layout.addWidget(self._save_btn)
 
+        # Claim section (shown for open beans)
+        self._claim_spacer = QWidget()
+        self._claim_spacer.setFixedHeight(16)
+        layout.addWidget(self._claim_spacer)
+        self._claim_group = QGroupBox("Claim")
+        claim_layout = QVBoxLayout(self._claim_group)
+        claim_layout.addWidget(QLabel("Assignee"))
+        self._claim_assignee_edit = QLineEdit()
+        claim_layout.addWidget(self._claim_assignee_edit)
+        self._claim_btn = QPushButton("Claim")
+        self._claim_btn.clicked.connect(self._on_claim)
+        claim_layout.addWidget(self._claim_btn)
+        layout.addWidget(self._claim_group)
+
+        # Release section (shown for in_progress beans)
+        self._release_spacer = QWidget()
+        self._release_spacer.setFixedHeight(16)
+        layout.addWidget(self._release_spacer)
+        self._release_group = QGroupBox("Release")
+        release_layout = QVBoxLayout(self._release_group)
+        self._release_btn = QPushButton("Release")
+        self._release_btn.clicked.connect(self._on_release)
+        release_layout.addWidget(self._release_btn)
+        layout.addWidget(self._release_group)
+
         # Close bean section (hidden when viewing closed beans)
         self._close_spacer = QWidget()
         self._close_spacer.setFixedHeight(16)
@@ -179,10 +206,21 @@ class Sidebar(QWidget):
         color = self._config.get_color(bean.assignee)
         self._color_btn.setStyleSheet(f"background-color: {color};")
 
-        # Hide close panel for already-closed beans
-        show_close = bean.status != "closed"
-        self._close_group.setVisible(show_close)
-        self._close_spacer.setVisible(show_close)
+        # Show/hide action panels based on status
+        is_open = bean.status == "open"
+        is_in_progress = bean.status == "in_progress"
+        is_closed = bean.status == "closed"
+
+        self._claim_group.setVisible(is_open)
+        self._claim_spacer.setVisible(is_open)
+        if is_open:
+            self._claim_assignee_edit.setText("")
+
+        self._release_group.setVisible(is_in_progress)
+        self._release_spacer.setVisible(is_in_progress)
+
+        self._close_group.setVisible(not is_closed)
+        self._close_spacer.setVisible(not is_closed)
 
 
     def start_new_bean(self, prefill: dict | None = None):
@@ -203,6 +241,10 @@ class Sidebar(QWidget):
         self._ref_id_edit.setText(self._pre_filled.get("ref_id", ""))
         self._body_edit.setPlainText(self._pre_filled.get("body", ""))
         self._save_btn.setText("Create")
+        self._claim_group.setVisible(False)
+        self._claim_spacer.setVisible(False)
+        self._release_group.setVisible(False)
+        self._release_spacer.setVisible(False)
         self._close_group.setVisible(False)
         self._close_spacer.setVisible(False)
 
@@ -226,6 +268,18 @@ class Sidebar(QWidget):
             "body": self._body_edit.toPlainText(),
         }
         return fields
+
+    def _on_claim(self):
+        """Handle claim button click."""
+        if self._current_bean is not None:
+            actor = self._claim_assignee_edit.text().strip()
+            if actor:
+                self.claim_requested.emit(str(self._current_bean.id), actor)
+
+    def _on_release(self):
+        """Handle release button click."""
+        if self._current_bean is not None:
+            self.release_requested.emit(str(self._current_bean.id))
 
     def _on_save(self):
         """Handle save/create button click."""
