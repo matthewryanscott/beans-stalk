@@ -358,13 +358,40 @@ def _refine_x_positions(
 COMPONENT_GAP = 80  # horizontal gap between disconnected components
 
 
+def _assign_layers_late(graph: nx.DiGraph) -> dict[str, int]:
+    """Assign each node to the latest possible layer (closest to leaves)."""
+    layers = {}
+    try:
+        order = list(reversed(list(nx.topological_sort(graph))))
+    except nx.NetworkXUnfeasible:
+        order = list(graph.nodes())
+
+    # First pass: assign from leaves upward
+    for node in order:
+        succs = list(graph.successors(node))
+        if not succs:
+            layers[node] = 0
+        else:
+            layers[node] = max(layers.get(s, 0) for s in succs) + 1
+
+    # Flip so roots are at top (layer 0)
+    if layers:
+        max_layer = max(layers.values())
+        layers = {n: max_layer - l for n, l in layers.items()}
+
+    return layers
+
+
 def _layout_single_component(
     subgraph: nx.DiGraph,
     sizes: dict[str, tuple[float, float]],
     default_size: tuple[float, float],
+    layer_fn=None,
 ) -> dict[str, tuple[float, float]]:
     """Layout a single connected component using Sugiyama-style algorithm."""
-    layer_assignment = _assign_layers(subgraph)
+    if layer_fn is None:
+        layer_fn = _assign_layers
+    layer_assignment = layer_fn(subgraph)
     aug_graph, layer_assignment, virtual_ids = _add_virtual_nodes(subgraph, layer_assignment)
     for vid in virtual_ids:
         sizes[vid] = (VIRTUAL_WIDTH, 0)

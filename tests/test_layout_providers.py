@@ -1,5 +1,5 @@
 from beans.models import Bean, BeanId, Dep
-from beans_stalk.graph.layout import build_dag
+from beans_stalk.graph.layout import _assign_layers_late, build_dag
 from beans_stalk.graph.layouts import PROVIDERS, get_provider
 
 
@@ -35,3 +35,57 @@ class TestSugiyamaProvider:
         positions = provider.compute(g, {"bean-00000001", "bean-00000002"})
         assert "bean-00000001" in positions
         assert "bean-00000002" in positions
+
+
+class TestLateLayers:
+    def test_late_assignment_pulls_nodes_down(self):
+        """A -> C, B -> C: with late assignment, A and B should be on layer
+        just above C, not at the top."""
+        beans = [_bean("bean-a", "A"), _bean("bean-b", "B"), _bean("bean-c", "C")]
+        deps = [_dep("bean-a", "bean-c"), _dep("bean-b", "bean-c")]
+        g = build_dag(beans, deps)
+        sub = g.subgraph({"bean-a", "bean-b", "bean-c"}).copy()
+        layers = _assign_layers_late(sub)
+        assert layers["bean-c"] > layers["bean-a"]
+        assert layers["bean-c"] > layers["bean-b"]
+        assert layers["bean-a"] == layers["bean-b"]
+        assert max(layers.values()) == 1
+
+    def test_late_vs_early_diamond(self):
+        """root -> A -> C, root -> B -> C, root -> C."""
+        beans = [_bean("bean-r", "Root"), _bean("bean-a", "A"), _bean("bean-b", "B"), _bean("bean-c", "C")]
+        deps = [_dep("bean-r", "bean-a"), _dep("bean-r", "bean-b"), _dep("bean-a", "bean-c"), _dep("bean-b", "bean-c"), _dep("bean-r", "bean-c")]
+        g = build_dag(beans, deps)
+        sub = g.subgraph({"bean-r", "bean-a", "bean-b", "bean-c"}).copy()
+        layers = _assign_layers_late(sub)
+        assert layers["bean-r"] == 0
+        assert layers["bean-a"] == 1
+        assert layers["bean-b"] == 1
+        assert layers["bean-c"] == 2
+
+
+class TestSugiyamaCompactProvider:
+    def test_registered(self):
+        assert "sugiyama_compact" in PROVIDERS
+
+    def test_compute_returns_positions(self):
+        beans = [_bean("bean-00000001", "A"), _bean("bean-00000002", "B")]
+        deps = [_dep("bean-00000001", "bean-00000002")]
+        g = build_dag(beans, deps)
+        provider = get_provider("sugiyama_compact")
+        positions = provider.compute(g, {"bean-00000001", "bean-00000002"})
+        assert "bean-00000001" in positions
+        assert "bean-00000002" in positions
+
+    def test_compact_reduces_layers_for_independent_node(self):
+        """Node with no predecessors but one successor should be placed just
+        above that successor, not at layer 0."""
+        beans = [_bean("bean-a", "A"), _bean("bean-b", "B"), _bean("bean-c", "C")]
+        deps = [_dep("bean-a", "bean-c"), _dep("bean-b", "bean-c")]
+        g = build_dag(beans, deps)
+        provider_std = get_provider("sugiyama")
+        provider_cmp = get_provider("sugiyama_compact")
+        pos_std = provider_std.compute(g, {"bean-a", "bean-b", "bean-c"})
+        pos_cmp = provider_cmp.compute(g, {"bean-a", "bean-b", "bean-c"})
+        assert len(pos_std) == 3
+        assert len(pos_cmp) == 3
