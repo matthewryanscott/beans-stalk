@@ -8,7 +8,8 @@ from beans.models import Bean, Dep
 from beans_stalk.ui.bean_node import BeanNode, _compute_node_size
 from beans_stalk.ui.dep_edge import DepEdge
 from beans_stalk.config import StalkConfig
-from beans_stalk.graph.layout import build_dag, compute_layout, stabilize_layout
+from beans_stalk.graph.layout import build_dag, stabilize_layout
+from beans_stalk.graph.layouts import get_provider
 
 ANIMATION_DURATION_MS = 300
 
@@ -31,6 +32,15 @@ class DagScene(QGraphicsScene):
         self._placeholder: QGraphicsTextItem | None = None
         self._current_parent_id: str | None = None
         self._parent_ids: set[str] = set()
+        self._layout_algorithm = "sugiyama"
+
+    @property
+    def layout_algorithm(self) -> str:
+        return self._layout_algorithm
+
+    @layout_algorithm.setter
+    def layout_algorithm(self, key: str):
+        self._layout_algorithm = key
 
     @property
     def current_parent_id(self) -> str | None:
@@ -138,7 +148,8 @@ class DagScene(QGraphicsScene):
         # Build DAG and compute layout
         graph = build_dag(beans, deps)
         visible_ids = set(visible_beans.keys())
-        new_positions = compute_layout(graph, visible_ids, node_sizes=node_sizes)
+        provider = get_provider(self._layout_algorithm)
+        new_positions = provider.compute(graph, visible_ids, node_sizes=node_sizes)
         new_positions = stabilize_layout(new_positions, self._positions, self._selected_id)
 
         # Placeholder

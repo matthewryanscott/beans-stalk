@@ -4,7 +4,8 @@ from beans import api
 
 from beans_stalk.config import StalkConfig
 from beans_stalk.data.store import StalkStore
-from beans_stalk.graph.layout import build_dag, compute_layout
+from beans_stalk.graph.layout import build_dag
+from beans_stalk.graph.layouts import get_provider
 from beans_stalk.ui.dag_scene import DagScene
 
 
@@ -26,7 +27,7 @@ class TestDataToLayoutPipeline:
         assert len(graph.nodes) == 3
         assert len(graph.edges) == 2
 
-        positions = compute_layout(graph, {a.id, b.id, c.id})
+        positions = get_provider("sugiyama").compute(graph, {a.id, b.id, c.id})
         assert len(positions) == 3
 
 
