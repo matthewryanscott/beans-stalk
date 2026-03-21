@@ -127,16 +127,17 @@ class Sidebar(QWidget):
         self._save_btn.clicked.connect(self._on_save)
         layout.addWidget(self._save_btn)
 
-        # Close bean section
-        close_group = QGroupBox("Close Bean")
-        close_layout = QVBoxLayout(close_group)
+        # Close bean section (hidden when viewing closed beans)
+        self._close_group = QGroupBox("Close Bean")
+        self._close_group.setContentsMargins(0, 12, 0, 0)
+        close_layout = QVBoxLayout(self._close_group)
         close_layout.addWidget(QLabel("Reason"))
         self._close_reason_edit = QLineEdit()
         close_layout.addWidget(self._close_reason_edit)
         self._close_btn = QPushButton("Close Bean")
         self._close_btn.clicked.connect(self._on_close_bean)
         close_layout.addWidget(self._close_btn)
-        layout.addWidget(close_group)
+        layout.addWidget(self._close_group)
 
         # Status label for messages
         self._status_label = QLabel()
@@ -176,6 +177,9 @@ class Sidebar(QWidget):
         color = self._config.get_color(bean.assignee)
         self._color_btn.setStyleSheet(f"background-color: {color};")
 
+        # Hide close panel for already-closed beans
+        self._close_group.setVisible(bean.status != "closed")
+
 
     def start_new_bean(self, prefill: dict | None = None):
         """Switch to create-new-bean mode, optionally pre-filling fields."""
@@ -195,6 +199,7 @@ class Sidebar(QWidget):
         self._ref_id_edit.setText(self._pre_filled.get("ref_id", ""))
         self._body_edit.setPlainText(self._pre_filled.get("body", ""))
         self._save_btn.setText("Create")
+        self._close_group.setVisible(False)
 
 
     def show_status(self, message: str):
