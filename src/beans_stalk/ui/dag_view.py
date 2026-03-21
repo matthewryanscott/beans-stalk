@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QPointF, QEvent, Signal
+from PySide6.QtCore import Qt, QPointF, QEvent, QMarginsF, Signal
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QGraphicsView, QMenu
 
@@ -33,6 +33,27 @@ class DagView(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.grabGesture(Qt.GestureType.PinchGesture)
 
+    def update_scene_rect(self):
+        """Set scene rect to graph bounds + half-viewport padding.
+
+        This allows centering any part of the graph in the viewport
+        while preventing panning so far that the graph disappears.
+        """
+        items_rect = self.scene().itemsBoundingRect()
+        if items_rect.isEmpty():
+            return
+        vp = self.viewport().rect()
+        # Pad by half viewport size so any graph corner can reach viewport center
+        pad_x = vp.width() / 2 / self.transform().m11() if self.transform().m11() > 0 else 0
+        pad_y = vp.height() / 2 / self.transform().m11() if self.transform().m11() > 0 else 0
+        padded = items_rect.marginsAdded(QMarginsF(pad_x, pad_y, pad_x, pad_y))
+        self.setSceneRect(padded)
+
+    def resizeEvent(self, event):
+        """Update scene rect padding when viewport size changes."""
+        super().resizeEvent(event)
+        self.update_scene_rect()
+
     def wheelEvent(self, event):
         """Scroll wheel scrolls the viewport — no zoom."""
         super().wheelEvent(event)
@@ -54,6 +75,7 @@ class DagView(QGraphicsView):
                    (current_scale * scale_factor > MAX_ZOOM and scale_factor > 1):
                     return True
                 self.scale(scale_factor, scale_factor)
+                self.update_scene_rect()
             return True
         return False
 

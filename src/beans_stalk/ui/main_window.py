@@ -148,6 +148,7 @@ class MainWindow(QMainWindow):
         self._scene.show_completed = show
         self._toggle_completed_action.setChecked(show)
         self._scene.update_snapshot(self._beans, self._deps)
+        self._view.update_scene_rect()
         self._restore_viewport()
 
     def _on_scene_navigate(self, parent_id):
@@ -188,6 +189,7 @@ class MainWindow(QMainWindow):
             self._scene.show_completed = show
             self._toggle_completed_action.setChecked(show)
         self._scene.update_snapshot(beans, deps)
+        self._view.update_scene_rect()
         if first_load:
             self._restore_viewport()
         if self._scene.selected_id:
@@ -277,17 +279,20 @@ class MainWindow(QMainWindow):
         self._config.save(self._beans_dir)
         self._scene.layout_algorithm = key
         self._scene.update_snapshot(self._beans, self._deps)
+        self._view.update_scene_rect()
 
     @Slot(str, str)
     def _on_color_changed(self, assignee: str, color: str):
         self._config.colors[assignee] = color
         self._config.save(self._beans_dir)
         self._scene.update_snapshot(self._beans, self._deps)
+        self._view.update_scene_rect()
 
     @Slot()
     def _on_toggle_completed(self):
         self._scene.show_completed = self._toggle_completed_action.isChecked()
         self._scene.update_snapshot(self._beans, self._deps)
+        self._view.update_scene_rect()
 
     @Slot()
     def _on_toggle_on_top(self):
