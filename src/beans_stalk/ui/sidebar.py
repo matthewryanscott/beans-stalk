@@ -337,6 +337,7 @@ class Sidebar(QWidget):
         self._close_group.setVisible(False)
         self._close_spacer.setVisible(False)
 
+        self._title_edit.setFocus()
 
     def show_status(self, message: str):
         """Display a status/error message."""
