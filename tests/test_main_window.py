@@ -56,6 +56,26 @@ class TestMainWindow:
         assert win._sidebar._title_edit.text() == "Task A"
         win.close()
 
+    def test_ctrl_g_triggers_edit_external(self, tmp_beans_dir, store, qtbot, monkeypatch):
+        """Ctrl+G should trigger external editor for body."""
+        a = api.create_bean(store, "Task A")
+        store.close()
+        win = MainWindow(tmp_beans_dir)
+        qtbot.addWidget(win)
+        win.show()
+        qtbot.waitUntil(lambda: len(win._beans) > 0, timeout=2000)
+        win._on_node_selected(a.id)
+
+        called = []
+        monkeypatch.setattr(win._sidebar, "_on_edit_external", lambda: called.append(True))
+
+        # Simulate physical Ctrl+G (Qt uses MetaModifier for Ctrl on macOS)
+        import sys
+        mod = Qt.KeyboardModifier.MetaModifier if sys.platform == "darwin" else Qt.KeyboardModifier.ControlModifier
+        qtbot.keyPress(win, Qt.Key.Key_G, mod)
+        assert called, "Ctrl+G should trigger _on_edit_external"
+        win.close()
+
     def test_cancel_unsaved_reverts_highlight_to_original_node(
         self, tmp_beans_dir, store, qtbot, monkeypatch
     ):

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import sys
+
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMainWindow, QSplitter, QFileDialog, QWidget, QVBoxLayout
@@ -123,6 +125,9 @@ class MainWindow(QMainWindow):
         new_bean_action.setShortcut(QKeySequence("Ctrl+N"))
         new_bean_action.triggered.connect(lambda: self._sidebar.start_new_bean())
         edit_menu.addAction(new_bean_action)
+        edit_body_action = QAction("Edit body in editor", self)
+        edit_body_action.triggered.connect(self._sidebar._on_edit_external)
+        edit_menu.addAction(edit_body_action)
 
         view_menu = self.menuBar().addMenu("View")
         self._toggle_completed_action = QAction("Show completed beans", self)
@@ -373,6 +378,20 @@ class MainWindow(QMainWindow):
         )
         if dir_path and self._on_open_dir:
             self._on_open_dir(dir_path)
+
+    # Physical Ctrl key modifier — Qt swaps Ctrl/Meta on macOS
+    _CTRL_MOD = (
+        Qt.KeyboardModifier.MetaModifier
+        if sys.platform == "darwin"
+        else Qt.KeyboardModifier.ControlModifier
+    )
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_G and event.modifiers() == self._CTRL_MOD:
+            self._sidebar._on_edit_external()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def closeEvent(self, event):
         if not self._sidebar.check_unsaved_changes():

@@ -94,10 +94,8 @@ class Sidebar(QWidget):
         type_status_row.addLayout(type_col)
         status_col = QVBoxLayout()
         status_col.addWidget(QLabel("Status"))
-        self._status_label_field = QLabel()
-        self._status_label_field.setStyleSheet(
-            "color: #ccc; font-size: 12px; padding: 4px 2px;"
-        )
+        self._status_label_field = QLineEdit()
+        self._status_label_field.setReadOnly(True)
         status_col.addWidget(self._status_label_field)
         type_status_row.addLayout(status_col)
         layout.addLayout(type_status_row)
@@ -113,10 +111,8 @@ class Sidebar(QWidget):
         # Assignee (read-only display with color button)
         layout.addWidget(QLabel("Assignee"))
         assignee_row = QHBoxLayout()
-        self._assignee_label = QLabel()
-        self._assignee_label.setStyleSheet(
-            "color: #ccc; font-size: 12px; padding: 4px 2px;"
-        )
+        self._assignee_label = QLineEdit()
+        self._assignee_label.setReadOnly(True)
         assignee_row.addWidget(self._assignee_label, 1)
         self._color_btn = QPushButton()
         self._color_btn.setFixedSize(24, 24)
@@ -134,14 +130,17 @@ class Sidebar(QWidget):
         layout.addWidget(self._ref_id_label_widget)
         self._ref_id_edit = QLineEdit()
         layout.addWidget(self._ref_id_edit)
-        self._ref_id_display = QLabel()
-        self._ref_id_display.setStyleSheet(
-            "color: #ccc; font-size: 12px; padding: 4px 2px;"
-        )
+        self._ref_id_display = QLineEdit()
+        self._ref_id_display.setReadOnly(True)
         layout.addWidget(self._ref_id_display)
 
         # Body — stretches to fill available vertical space (editable)
+        body_container = QVBoxLayout()
+        body_container.setContentsMargins(0, 0, 0, 0)
+        body_container.setSpacing(0)
         body_header = QHBoxLayout()
+        body_header.setContentsMargins(0, 0, 0, 0)
+        body_header.setSpacing(4)
         body_header.addWidget(QLabel("Body"))
         editor_name = Path(self._editor_cmd).name if self._editor_cmd else None
         self._edit_external_btn = QPushButton(f"Edit with {editor_name}")
@@ -153,10 +152,11 @@ class Sidebar(QWidget):
         self._editing_label.setVisible(False)
         body_header.addWidget(self._editing_label)
         body_header.addStretch()
-        layout.addLayout(body_header)
+        body_container.addLayout(body_header)
         self._body_edit = QTextEdit()
         self._body_edit.setMinimumHeight(80)
-        layout.addWidget(self._body_edit, 1)  # stretch factor 1
+        body_container.addWidget(self._body_edit, 1)  # stretch factor 1
+        layout.addLayout(body_container, 1)  # stretch factor 1
 
         # Save button
         self._save_btn = QPushButton("Save")
@@ -375,6 +375,8 @@ class Sidebar(QWidget):
     def _on_edit_external(self):
         """Launch $EDITOR with body contents in a temp markdown file."""
         if not self._editor_cmd or self._editor_process is not None:
+            return
+        if self._current_bean is None and not self._creating:
             return
 
         # Write current body to temp file
