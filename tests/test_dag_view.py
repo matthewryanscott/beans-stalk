@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QPoint, QPointF
-from PySide6.QtGui import QMouseEvent, QWheelEvent
+from PySide6.QtGui import QKeyEvent, QMouseEvent, QWheelEvent
 from beans.models import Bean
 from beans_stalk.config import StalkConfig
 from beans_stalk.ui.dag_scene import DagScene
@@ -187,3 +187,71 @@ class TestDagView:
         # Both axes should have moved
         assert after_h != before_h, "horizontal scroll should have changed"
         assert after_v != before_v, "vertical scroll should have changed"
+
+    def test_delete_key_emits_delete_requested(self, qtbot):
+        """Pressing Delete with a node selected emits delete_requested."""
+        config = StalkConfig()
+        scene = DagScene(config)
+        view = DagView(scene)
+        qtbot.addWidget(view)
+        view.show()
+
+        bean = Bean(id="bean-1", title="Delete Me", status="open", type="task",
+                    priority=2, body="")
+        node = BeanNode(bean, "#336699")
+        scene.addItem(node)
+        scene._nodes["bean-1"] = node
+        scene.selected_id = "bean-1"
+
+        deleted_ids = []
+        scene.delete_requested.connect(lambda bid: deleted_ids.append(bid))
+
+        qtbot.keyPress(view, Qt.Key.Key_Delete)
+
+        assert deleted_ids == ["bean-1"]
+
+    def test_delete_key_noop_on_ghost(self, qtbot):
+        """Pressing Delete on a ghost node should not emit delete_requested."""
+        config = StalkConfig()
+        scene = DagScene(config)
+        view = DagView(scene)
+        qtbot.addWidget(view)
+        view.show()
+
+        bean = Bean(id="bean-1", title="Ghost", status="open", type="task",
+                    priority=2, body="")
+        node = BeanNode(bean, "#336699")
+        node.ghost = True
+        scene.addItem(node)
+        scene._nodes["bean-1"] = node
+        scene.selected_id = "bean-1"
+
+        deleted_ids = []
+        scene.delete_requested.connect(lambda bid: deleted_ids.append(bid))
+
+        qtbot.keyPress(view, Qt.Key.Key_Delete)
+
+        assert deleted_ids == []
+
+    def test_delete_key_noop_when_locked(self, qtbot):
+        """Pressing Delete when view is locked should not emit delete_requested."""
+        config = StalkConfig()
+        scene = DagScene(config)
+        view = DagView(scene)
+        qtbot.addWidget(view)
+        view.show()
+        view.locked = True
+
+        bean = Bean(id="bean-1", title="Locked", status="open", type="task",
+                    priority=2, body="")
+        node = BeanNode(bean, "#336699")
+        scene.addItem(node)
+        scene._nodes["bean-1"] = node
+        scene.selected_id = "bean-1"
+
+        deleted_ids = []
+        scene.delete_requested.connect(lambda bid: deleted_ids.append(bid))
+
+        qtbot.keyPress(view, Qt.Key.Key_Delete)
+
+        assert deleted_ids == []

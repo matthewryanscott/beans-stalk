@@ -162,6 +162,14 @@ class DagView(QGraphicsView):
             self._dag_scene.selected_id = None
             event.accept()
             return
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace) and not self.locked:
+            selected = self._dag_scene.selected_id
+            if selected and selected in self._dag_scene._nodes:
+                node = self._dag_scene._nodes[selected]
+                if not node.ghost:
+                    self._dag_scene.delete_requested.emit(selected)
+            event.accept()
+            return
         super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
@@ -209,6 +217,9 @@ class DagView(QGraphicsView):
             menu.addAction("New child bean", lambda: self.new_child_requested.emit(bean_id))
             menu.addAction("New bean blocked by this", lambda: self.new_blocker_requested.emit(bean_id))
             menu.addAction("New bean that blocks this", lambda: self.new_blocked_by_requested.emit(bean_id))
+            if not item.ghost:
+                menu.addSeparator()
+                menu.addAction("Delete bean", lambda: self._dag_scene.delete_requested.emit(bean_id))
         else:
             menu.addAction("New bean", lambda: self.new_bean_requested.emit())
         menu.exec(event.globalPos())
