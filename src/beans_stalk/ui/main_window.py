@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
             self.resize(1200, 700)
 
     def _setup_ui(self):
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Left pane: breadcrumb + DAG view
         left_pane = QWidget()
@@ -64,14 +64,18 @@ class MainWindow(QMainWindow):
         self._view = DagView(self._scene)
         left_layout.addWidget(self._view)
 
-        splitter.addWidget(left_pane)
+        self._splitter.addWidget(left_pane)
 
         self._sidebar = Sidebar(self._config)
-        splitter.addWidget(self._sidebar)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
-        splitter.setSizes([900, 300])
-        self.setCentralWidget(splitter)
+        self._splitter.addWidget(self._sidebar)
+        self._splitter.setStretchFactor(0, 1)
+        self._splitter.setStretchFactor(1, 0)
+        saved_sizes = self._config.window_geometry.get("splitter_sizes")
+        if saved_sizes:
+            self._splitter.setSizes(saved_sizes)
+        else:
+            self._splitter.setSizes([900, 300])
+        self.setCentralWidget(self._splitter)
 
         # Connect signals
         self._breadcrumb.navigate_to.connect(self._on_breadcrumb_navigate)
@@ -351,6 +355,7 @@ class MainWindow(QMainWindow):
         self._config.window_geometry = {
             "x": geo.x(), "y": geo.y(),
             "width": geo.width(), "height": geo.height(),
+            "splitter_sizes": self._splitter.sizes(),
         }
         self._config.save(self._beans_dir)
         self._watcher.stop()
