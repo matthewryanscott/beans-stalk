@@ -82,12 +82,13 @@ class BeanNode(QGraphicsObject):
         self._muted = muted
         self._ready = False
         self._ghost = False
+        self._ready = False
+        self._child_count = 0
         self._pulsing = False
         self._pulse_phase = 0.0
         self._pulse_anim: QPropertyAnimation | None = None
         self._hovered = False
         self._highlighted = False
-        self._child_count = 0
         self._width, self._height = _compute_node_size(bean.title)
         self.setAcceptHoverEvents(True)
         self.setFlag(self.GraphicsItemFlag.ItemIsSelectable, True)

@@ -61,7 +61,7 @@ class MainWindow(QMainWindow):
         self._breadcrumb.layout_changed.connect(self._on_layout_changed)
         left_layout.addWidget(self._breadcrumb)
 
-        self._scene = DagScene(self._config)
+        self._scene = DagScene(self._config, store=self._store)
         self._scene.layout_algorithm = self._config.layout_algorithm
         self._view = DagView(self._scene)
         left_layout.addWidget(self._view)

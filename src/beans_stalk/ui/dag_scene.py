@@ -21,10 +21,12 @@ class DagScene(QGraphicsScene):
     navigate_requested = Signal(object)
     dep_toggle_requested = Signal(str, str)
     dep_remove_requested = Signal(str, str)
+    delete_requested = Signal(str)
 
-    def __init__(self, config: StalkConfig, parent=None):
+    def __init__(self, config: StalkConfig, store=None, parent=None):
         super().__init__(parent)
         self._config = config
+        self._store = store
         self._nodes: dict[str, BeanNode] = {}
         self._edges: dict[tuple[str, str], DepEdge] = {}
         self._positions: dict[str, tuple[float, float]] = {}
@@ -166,6 +168,18 @@ class DagScene(QGraphicsScene):
         else:
             self._hide_placeholder()
 
+        # Compute ready state from store
+        try:
+            ready_ids = self._store.ready_bean_ids() if self._store else set()
+        except Exception:
+            ready_ids = set()
+
+        # Compute child counts
+        child_counts: dict[str, int] = {}
+        for bean in beans:
+            if bean.parent_id is not None:
+                child_counts[bean.parent_id] = child_counts.get(bean.parent_id, 0) + 1
+
         # Remove old nodes
         for bean_id in list(self._nodes.keys()):
             if bean_id not in visible_beans:
@@ -190,6 +204,8 @@ class DagScene(QGraphicsScene):
                 (bean.status == "in_progress" and bean.assignee is not None)
                 or bean_id in active_ancestors
             )
+            node.ready = (bean_id in ready_ids and not muted)
+            node.child_count = child_counts.get(bean_id, 0)
 
             if bean_id in new_positions:
                 target = QPointF(*new_positions[bean_id])

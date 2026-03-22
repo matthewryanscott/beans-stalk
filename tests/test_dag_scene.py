@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from beans.models import Bean, BeanId, Dep
 from beans_stalk.config import StalkConfig
+from beans_stalk.data.store import StalkStore
 from beans_stalk.ui.dag_scene import DagScene
 
 
@@ -88,3 +89,30 @@ class TestDagScene:
         assert scene._nodes["bean-00000001"].isSelected()
         scene.selected_id = None
         assert not scene._nodes["bean-00000001"].isSelected()
+
+    def test_ready_state_applied_to_nodes(self, qapp, tmp_path):
+        db_path = tmp_path / "beans.db"
+        store = StalkStore(db_path)
+        # Create two beans with a dep: A blocks B
+        a = store.create_bean("A")
+        b = store.create_bean("B")
+        store.add_dep(a.id, b.id)
+        beans, deps = store.load_snapshot()
+        scene = DagScene(StalkConfig(), store=store)
+        scene.update_snapshot(beans, deps)
+        # A has no blockers so it should be ready; B is blocked by A
+        assert scene._nodes[a.id].ready is True
+        assert scene._nodes[b.id].ready is False
+        store.close()
+
+    def test_child_count_applied_to_nodes(self, qapp, tmp_path):
+        db_path = tmp_path / "beans.db"
+        store = StalkStore(db_path)
+        parent = store.create_bean("Parent")
+        store.create_bean("Child 1", parent_id=parent.id)
+        store.create_bean("Child 2", parent_id=parent.id)
+        beans, deps = store.load_snapshot()
+        scene = DagScene(StalkConfig(), store=store)
+        scene.update_snapshot(beans, deps)
+        assert scene._nodes[parent.id].child_count == 2
+        store.close()

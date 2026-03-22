@@ -54,3 +54,6 @@ class StalkStore:
 
     def show_bean(self, bean_id: str) -> Bean:
         return api.show_bean(self.store, bean_id)
+
+    def ready_bean_ids(self) -> set[str]:
+        return {b.id for b in api.ready_beans(self.store)}
