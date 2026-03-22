@@ -94,8 +94,8 @@ class Sidebar(QWidget):
         type_status_row.addLayout(type_col)
         status_col = QVBoxLayout()
         status_col.addWidget(QLabel("Status"))
-        self._status_label_field = QLineEdit()
-        self._status_label_field.setReadOnly(True)
+        self._status_label_field = QComboBox()
+        self._status_label_field.setEnabled(False)
         status_col.addWidget(self._status_label_field)
         type_status_row.addLayout(status_col)
         layout.addLayout(type_status_row)
@@ -160,8 +160,16 @@ class Sidebar(QWidget):
 
         # Save button
         self._save_btn = QPushButton("Save")
+        self._save_btn.setEnabled(False)
         self._save_btn.clicked.connect(self._on_save)
         layout.addWidget(self._save_btn)
+
+        # Track changes to enable/disable save button
+        self._title_edit.textChanged.connect(self._update_save_enabled)
+        self._type_combo.currentTextChanged.connect(self._update_save_enabled)
+        self._priority_spin.valueChanged.connect(self._update_save_enabled)
+        self._parent_edit.textChanged.connect(self._update_save_enabled)
+        self._body_edit.textChanged.connect(self._update_save_enabled)
 
         # Claim section (shown for open beans)
         self._claim_spacer = QWidget()
@@ -218,6 +226,11 @@ class Sidebar(QWidget):
         self._creating = False
         self._stack.setCurrentIndex(0)
 
+    def _editable_widgets(self):
+        """Return widgets whose changes affect the save button."""
+        return (self._title_edit, self._type_combo, self._priority_spin,
+                self._parent_edit, self._body_edit)
+
     def show_bean(self, bean: Bean, deps: list[Dep]):
         """Populate the editor with an existing bean's data."""
         self._current_bean = bean
@@ -226,17 +239,25 @@ class Sidebar(QWidget):
         self._status_label.setVisible(False)
         self._stack.setCurrentIndex(1)
 
+        # Block signals while populating to avoid spurious save-button updates
+        for w in self._editable_widgets():
+            w.blockSignals(True)
         self._title_edit.setText(bean.title)
         self._type_combo.setCurrentText(bean.type)
-        self._status_label_field.setText(bean.status)
+        self._status_label_field.clear()
+        self._status_label_field.addItem(bean.status)
+        self._status_label_field.setCurrentText(bean.status)
         self._priority_spin.setValue(bean.priority)
-        self._assignee_label.setText(bean.assignee or "—")
+        self._assignee_label.setText(bean.assignee or "")
         self._parent_edit.setText(str(bean.parent_id) if bean.parent_id else "")
         self._ref_id_edit.setVisible(False)
         self._ref_id_display.setVisible(True)
-        self._ref_id_display.setText(bean.ref_id or "—")
+        self._ref_id_display.setText(bean.ref_id or "")
         self._body_edit.setPlainText(bean.body)
+        for w in self._editable_widgets():
+            w.blockSignals(False)
         self._save_btn.setText("Save")
+        self._save_btn.setEnabled(False)
 
         # Update color button
         color = self._config.get_color(bean.assignee)
@@ -269,18 +290,25 @@ class Sidebar(QWidget):
         self._status_label.setVisible(False)
         self._stack.setCurrentIndex(1)
 
+        for w in self._editable_widgets():
+            w.blockSignals(True)
         self._title_edit.setText(self._pre_filled.get("title", ""))
         self._type_combo.setCurrentText(self._pre_filled.get("type", "task"))
-        self._status_label_field.setText("open")
+        self._status_label_field.clear()
+        self._status_label_field.addItem("open")
+        self._status_label_field.setCurrentText("open")
         self._priority_spin.setValue(self._pre_filled.get("priority", 2))
-        self._assignee_label.setText("—")
+        self._assignee_label.setText("")
         self._color_btn.setVisible(False)
         self._parent_edit.setText(self._pre_filled.get("parent_id", ""))
         self._ref_id_edit.setVisible(True)
         self._ref_id_display.setVisible(False)
         self._ref_id_edit.setText(self._pre_filled.get("ref_id", ""))
         self._body_edit.setPlainText(self._pre_filled.get("body", ""))
+        for w in self._editable_widgets():
+            w.blockSignals(False)
         self._save_btn.setText("Create")
+        self._save_btn.setEnabled(False)
         self._claim_group.setVisible(False)
         self._claim_spacer.setVisible(False)
         self._release_group.setVisible(False)
@@ -294,6 +322,10 @@ class Sidebar(QWidget):
         self._stack.setCurrentIndex(1)
         self._status_label.setText(message)
         self._status_label.setVisible(True)
+
+    def _update_save_enabled(self):
+        """Enable save button only when there are unsaved changes."""
+        self._save_btn.setEnabled(self.has_unsaved_changes())
 
     def has_unsaved_changes(self) -> bool:
         """Check if the current form has been modified from the loaded bean."""

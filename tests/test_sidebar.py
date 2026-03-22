@@ -77,7 +77,7 @@ class TestSidebar:
         qtbot.addWidget(sidebar)
         bean = _bean(status="in_progress")
         sidebar.show_bean(bean, [])
-        assert sidebar._status_label_field.text() == "in_progress"
+        assert sidebar._status_label_field.currentText() == "in_progress"
 
     def test_assignee_read_only_for_existing(self, qtbot):
         sidebar = Sidebar(StalkConfig())
