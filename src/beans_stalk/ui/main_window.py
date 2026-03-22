@@ -38,7 +38,12 @@ class MainWindow(QMainWindow):
         self._setup_menus()
         self._watcher.start()
         self.setWindowTitle(f"Beans Stalk — {beans_dir}")
-        self.resize(1200, 700)
+        geo = self._config.window_geometry
+        if geo and "width" in geo:
+            self.setGeometry(geo.get("x", 100), geo.get("y", 100),
+                             geo["width"], geo["height"])
+        else:
+            self.resize(1200, 700)
 
     def _setup_ui(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -342,6 +347,11 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._save_viewport()
+        geo = self.geometry()
+        self._config.window_geometry = {
+            "x": geo.x(), "y": geo.y(),
+            "width": geo.width(), "height": geo.height(),
+        }
         self._config.save(self._beans_dir)
         self._watcher.stop()
         self._store.close()

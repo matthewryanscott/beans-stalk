@@ -32,6 +32,7 @@ class StalkConfig:
     layout_algorithm: str = "sugiyama"
     colors: dict[str, str] = field(default_factory=dict)
     viewports: dict[str, dict[str, float]] = field(default_factory=dict)
+    window_geometry: dict[str, int] = field(default_factory=dict)
 
     @classmethod
     def load(cls, beans_dir: Path) -> "StalkConfig":
@@ -46,6 +47,7 @@ class StalkConfig:
             layout_algorithm=data.get("layout_algorithm", "sugiyama"),
             colors=dict(data.get("colors", {})),
             viewports={k: dict(v) for k, v in data.get("viewports", {}).items()},
+            window_geometry=dict(data.get("window_geometry", {})),
         )
 
     def save(self, beans_dir: Path) -> None:
@@ -56,6 +58,7 @@ class StalkConfig:
             "layout_algorithm": self.layout_algorithm,
             "colors": self.colors,
             "viewports": self.viewports,
+            "window_geometry": self.window_geometry,
         }
         with open(toml_path, "wb") as f:
             tomli_w.dump(data, f)
