@@ -208,3 +208,29 @@ class TestMainWindow:
         # Selection should still be set
         assert win._scene.selected_id == a.id
         win.close()
+
+    def test_ready_beans_highlighted_after_snapshot(self, tmp_beans_dir, store, qtbot):
+        """A bean with no blockers should have ready=True after snapshot loads."""
+        a = api.create_bean(store, "Ready bean")
+        store.close()
+        win = MainWindow(tmp_beans_dir)
+        qtbot.addWidget(win)
+        win.show()
+        qtbot.waitUntil(lambda: len(win._beans) > 0, timeout=2000)
+        node = win._scene._nodes[a.id]
+        assert node.ready is True
+        win.close()
+
+    def test_child_count_on_parent_node(self, tmp_beans_dir, store, qtbot):
+        """A parent bean should have child_count reflecting its number of children."""
+        parent = api.create_bean(store, "Parent")
+        api.create_bean(store, "Child 1", parent_id=parent.id)
+        api.create_bean(store, "Child 2", parent_id=parent.id)
+        store.close()
+        win = MainWindow(tmp_beans_dir)
+        qtbot.addWidget(win)
+        win.show()
+        qtbot.waitUntil(lambda: len(win._beans) > 0, timeout=2000)
+        node = win._scene._nodes[parent.id]
+        assert node.child_count == 2
+        win.close()

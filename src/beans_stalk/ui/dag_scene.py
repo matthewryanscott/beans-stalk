@@ -97,11 +97,26 @@ class DagScene(QGraphicsScene):
         # Index all beans by id
         all_beans: dict[str, Bean] = {bean.id: bean for bean in beans}
 
-        # Precompute parent_ids (beans that have children)
+        # Precompute parent_ids (beans that have children) and child counts
         self._parent_ids = set()
+        child_counts: dict[str, int] = {}
         for bean in beans:
             if bean.parent_id is not None:
                 self._parent_ids.add(bean.parent_id)
+                child_counts[bean.parent_id] = child_counts.get(bean.parent_id, 0) + 1
+
+        # Precompute ready set: open beans with no open blockers
+        blocked_ids: set[str] = set()
+        for dep in deps:
+            if dep.dep_type == "blocks":
+                blocker = all_beans.get(dep.from_id)
+                blocked = all_beans.get(dep.to_id)
+                if blocker and blocked and blocker.status != "closed" and blocked.status != "closed":
+                    blocked_ids.add(dep.to_id)
+        ready_ids: set[str] = set()
+        for bean in beans:
+            if bean.status != "closed" and bean.id not in blocked_ids:
+                ready_ids.add(bean.id)
 
         # Precompute active ancestors: walk up from in_progress+assigned beans
         active_ancestors: set[str] = set()
@@ -200,6 +215,8 @@ class DagScene(QGraphicsScene):
                 self.addItem(node)
 
             node.ghost = (bean_id in ghost_ids)
+            node.ready = (bean_id in ready_ids)
+            node.child_count = child_counts.get(bean_id, 0)
             node.pulsing = (
                 (bean.status == "in_progress" and bean.assignee is not None)
                 or bean_id in active_ancestors
