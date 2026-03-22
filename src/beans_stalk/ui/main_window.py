@@ -356,11 +356,13 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._sidebar.show_status(str(e))
             return
-        # Select the new bean immediately (no unsaved-changes dialog)
-        self._scene.selected_id = bean.id
+        # Refresh scene so the new node appears, then select it
         beans, deps = self._store.load_snapshot()
         self._beans = beans
         self._deps = deps
+        self._scene.update_snapshot(beans, deps)
+        self._view.update_scene_rect()
+        self._scene.selected_id = bean.id
         self._sidebar.show_bean(bean, deps)
 
     @Slot(str, str)
