@@ -344,6 +344,9 @@ class MainWindow(QMainWindow):
     def _on_create_bean(self, fields: dict):
         add_blocks = fields.pop("_add_blocks", None)
         add_blocked_by = fields.pop("_add_blocked_by", None)
+        # Auto-set parent to current view level
+        if "parent_id" not in fields:
+            fields["parent_id"] = self._scene.current_parent_id
         try:
             bean = self._store.create_bean(**fields)
             if add_blocks:
@@ -352,6 +355,13 @@ class MainWindow(QMainWindow):
                 self._store.add_dep(add_blocked_by, bean.id)
         except Exception as e:
             self._sidebar.show_status(str(e))
+            return
+        # Select the new bean immediately (no unsaved-changes dialog)
+        self._scene.selected_id = bean.id
+        beans, deps = self._store.load_snapshot()
+        self._beans = beans
+        self._deps = deps
+        self._sidebar.show_bean(bean, deps)
 
     @Slot(str, str)
     def _on_add_dep(self, from_id: str, to_id: str):

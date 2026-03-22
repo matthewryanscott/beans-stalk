@@ -39,7 +39,8 @@ class TestSidebar:
         sidebar = Sidebar(StalkConfig())
         qtbot.addWidget(sidebar)
         sidebar.start_new_bean({"parent_id": "bean-00000001"})
-        assert sidebar._parent_edit.text() == "bean-00000001"
+        fields = sidebar._collect_fields()
+        assert fields["parent_id"] == "bean-00000001"
 
     def test_save_emits_signal_for_existing(self, qtbot):
         sidebar = Sidebar(StalkConfig())

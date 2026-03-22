@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, QProcess
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QApplication,
     QColorDialog,
     QComboBox,
     QMessageBox,
@@ -79,6 +80,25 @@ class Sidebar(QWidget):
         container = QWidget()
         layout = QVBoxLayout(container)
 
+        # Bean ID (read-only, shown when viewing existing bean)
+        id_container = QVBoxLayout()
+        id_container.setContentsMargins(0, 0, 0, 0)
+        id_container.setSpacing(0)
+        id_label = QLabel("ID")
+        id_container.addWidget(id_label)
+        id_row = QHBoxLayout()
+        id_row.setContentsMargins(0, 0, 0, 0)
+        self._id_display = QLineEdit()
+        self._id_display.setReadOnly(True)
+        id_row.addWidget(self._id_display, 1)
+        self._copy_id_btn = QPushButton("\U0001f4cb Copy")
+        self._copy_id_btn.clicked.connect(self._copy_id)
+        id_row.addWidget(self._copy_id_btn)
+        id_container.addLayout(id_row)
+        layout.addLayout(id_container)
+        self._id_label = id_label
+        self._id_row_widgets = [id_label, self._id_display, self._copy_id_btn]
+
         # Title (editable)
         layout.addWidget(QLabel("Title"))
         self._title_edit = QLineEdit()
@@ -119,11 +139,6 @@ class Sidebar(QWidget):
         self._color_btn.clicked.connect(self._pick_color)
         assignee_row.addWidget(self._color_btn)
         layout.addLayout(assignee_row)
-
-        # Parent ID (editable)
-        layout.addWidget(QLabel("Parent ID"))
-        self._parent_edit = QLineEdit()
-        layout.addWidget(self._parent_edit)
 
         # Ref ID (editable at creation, read-only after)
         self._ref_id_label_widget = QLabel("Ref ID")
@@ -168,7 +183,6 @@ class Sidebar(QWidget):
         self._title_edit.textChanged.connect(self._update_save_enabled)
         self._type_combo.currentTextChanged.connect(self._update_save_enabled)
         self._priority_spin.valueChanged.connect(self._update_save_enabled)
-        self._parent_edit.textChanged.connect(self._update_save_enabled)
         self._body_edit.textChanged.connect(self._update_save_enabled)
 
         # Claim section (shown for open beans)
@@ -229,7 +243,7 @@ class Sidebar(QWidget):
     def _editable_widgets(self):
         """Return widgets whose changes affect the save button."""
         return (self._title_edit, self._type_combo, self._priority_spin,
-                self._parent_edit, self._body_edit)
+                self._body_edit)
 
     def show_bean(self, bean: Bean, deps: list[Dep]):
         """Populate the editor with an existing bean's data."""
@@ -238,6 +252,11 @@ class Sidebar(QWidget):
         self._creating = False
         self._status_label.setVisible(False)
         self._stack.setCurrentIndex(1)
+
+        # Show bean ID
+        self._id_display.setText(bean.id)
+        for w in self._id_row_widgets:
+            w.setVisible(True)
 
         # Block signals while populating to avoid spurious save-button updates
         for w in self._editable_widgets():
@@ -249,7 +268,6 @@ class Sidebar(QWidget):
         self._status_label_field.setCurrentText(bean.status)
         self._priority_spin.setValue(bean.priority)
         self._assignee_label.setText(bean.assignee or "")
-        self._parent_edit.setText(str(bean.parent_id) if bean.parent_id else "")
         self._ref_id_edit.setVisible(False)
         self._ref_id_display.setVisible(True)
         self._ref_id_display.setText(bean.ref_id or "")
@@ -290,6 +308,10 @@ class Sidebar(QWidget):
         self._status_label.setVisible(False)
         self._stack.setCurrentIndex(1)
 
+        # Hide ID row for new beans
+        for w in self._id_row_widgets:
+            w.setVisible(False)
+
         for w in self._editable_widgets():
             w.blockSignals(True)
         self._title_edit.setText(self._pre_filled.get("title", ""))
@@ -300,7 +322,6 @@ class Sidebar(QWidget):
         self._priority_spin.setValue(self._pre_filled.get("priority", 2))
         self._assignee_label.setText("")
         self._color_btn.setVisible(False)
-        self._parent_edit.setText(self._pre_filled.get("parent_id", ""))
         self._ref_id_edit.setVisible(True)
         self._ref_id_display.setVisible(False)
         self._ref_id_edit.setText(self._pre_filled.get("ref_id", ""))
@@ -340,8 +361,6 @@ class Sidebar(QWidget):
             return True
         if self._priority_spin.value() != bean.priority:
             return True
-        if (self._parent_edit.text() or None) != bean.parent_id:
-            return True
         if self._body_edit.toPlainText() != bean.body:
             return True
         return False
@@ -365,25 +384,18 @@ class Sidebar(QWidget):
 
     def _collect_fields(self) -> dict:
         """Gather current field values into a dict."""
+        fields = {
+            "title": self._title_edit.text(),
+            "type": self._type_combo.currentText(),
+            "priority": self._priority_spin.value(),
+            "body": self._body_edit.toPlainText(),
+        }
         if self._creating:
-            # At creation, all Bean fields are valid
-            fields = {
-                "title": self._title_edit.text(),
-                "type": self._type_combo.currentText(),
-                "priority": self._priority_spin.value(),
-                "parent_id": self._parent_edit.text() or None,
-                "ref_id": self._ref_id_edit.text() or None,
-                "body": self._body_edit.toPlainText(),
-            }
-        else:
-            # For updates, only BeanUpdate-compatible fields
-            fields = {
-                "title": self._title_edit.text(),
-                "type": self._type_combo.currentText(),
-                "priority": self._priority_spin.value(),
-                "parent_id": self._parent_edit.text() or None,
-                "body": self._body_edit.toPlainText(),
-            }
+            fields["ref_id"] = self._ref_id_edit.text() or None
+            # Pass through prefilled keys not shown in the form
+            for key in ("parent_id", "_add_blocks", "_add_blocked_by"):
+                if key in self._pre_filled:
+                    fields[key] = self._pre_filled[key]
         return fields
 
     def _set_editing_mode(self, editing: bool):
@@ -393,7 +405,6 @@ class Sidebar(QWidget):
         self._title_edit.setEnabled(not editing)
         self._type_combo.setEnabled(not editing)
         self._priority_spin.setEnabled(not editing)
-        self._parent_edit.setEnabled(not editing)
         self._body_edit.setEnabled(not editing)
         self._save_btn.setEnabled(not editing)
         self._claim_btn.setEnabled(not editing)
@@ -471,6 +482,12 @@ class Sidebar(QWidget):
         if self._current_bean is not None:
             reason = self._close_reason_edit.text()
             self.close_bean_requested.emit(str(self._current_bean.id), reason)
+
+    def _copy_id(self):
+        """Copy the current bean's ID to clipboard."""
+        text = self._id_display.text()
+        if text:
+            QApplication.clipboard().setText(text)
 
     def _pick_color(self):
         """Open a color picker for the current bean's assignee."""
