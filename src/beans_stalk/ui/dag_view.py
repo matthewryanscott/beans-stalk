@@ -17,11 +17,15 @@ class DagView(QGraphicsView):
     new_blocked_by_requested = Signal(str)
     view_in_new_window_requested = Signal(str)
 
+    DRAG_THRESHOLD = 5  # pixels — below this a press+release counts as a click
+
     def __init__(self, scene: DagScene, parent=None):
         super().__init__(scene, parent)
         self._dag_scene = scene
         self._panning = False
         self._pan_start = QPointF()
+        self._press_origin = QPointF()  # original press position for drag detection
+        self._press_item = None  # item under cursor at press time
         self._shift_dragging = False
         self._shift_drag_source: BeanNode | None = None
         self.locked = False  # when True, only panning/zooming allowed
@@ -94,19 +98,14 @@ class DagView(QGraphicsView):
                     self._dag_scene.dep_remove_requested.emit(item.from_id, item.to_id)
                     event.accept()
                     return
-            else:
-                item = self.itemAt(event.pos())
-                if item is None or self.locked:
-                    if not self.locked:
-                        self._dag_scene.selected_id = None
-                    self._panning = True
-                    self._pan_start = event.position()
-                    self.setCursor(Qt.CursorShape.ClosedHandCursor)
-                    event.accept()
-                    return
-                if not self.locked:
-                    super().mousePressEvent(event)
-                    return
+            # Always start panning — click vs drag decided on release
+            self._press_item = self.itemAt(event.position().toPoint()) if not self.locked else None
+            self._panning = True
+            self._pan_start = event.position()
+            self._press_origin = event.position()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -119,11 +118,23 @@ class DagView(QGraphicsView):
             return
         super().mouseMoveEvent(event)
 
+    def _was_click(self, release_pos) -> bool:
+        """True if the mouse barely moved since press — treat as click, not drag."""
+        delta = release_pos - self._press_origin
+        return (delta.x() ** 2 + delta.y() ** 2) < self.DRAG_THRESHOLD ** 2
+
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             if self._panning:
                 self._panning = False
                 self.setCursor(Qt.CursorShape.ArrowCursor)
+                if self._was_click(event.position()):
+                    item = self._press_item
+                    if isinstance(item, BeanNode):
+                        self._dag_scene._on_node_clicked(item.bean.id)
+                    else:
+                        self._dag_scene.selected_id = None
+                self._press_item = None
                 event.accept()
                 return
             if self._shift_dragging and self._shift_drag_source is not None:
