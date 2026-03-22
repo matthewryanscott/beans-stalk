@@ -1,4 +1,5 @@
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMessageBox
 from beans import api
 from beans_stalk.ui.main_window import MainWindow
 
@@ -143,4 +144,67 @@ class TestMainWindow:
         assert not dialog_called
         # Edits should be preserved
         assert win._sidebar._title_edit.text() == "Task A edited"
+        win.close()
+
+    def test_delete_bean_with_confirmation(self, tmp_beans_dir, store, qtbot, monkeypatch):
+        """Confirming delete removes the bean and clears selection."""
+        a = api.create_bean(store, "Task A")
+        store.close()
+        win = MainWindow(tmp_beans_dir)
+        qtbot.addWidget(win)
+        win.show()
+        qtbot.waitUntil(lambda: len(win._beans) > 0, timeout=2000)
+
+        # Select the bean first
+        win._on_node_selected(a.id)
+        assert win._scene.selected_id == a.id
+
+        # Monkeypatch QMessageBox.warning to return Yes
+        monkeypatch.setattr(
+            QMessageBox, "warning",
+            lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+        )
+
+        win._on_delete_bean(a.id)
+
+        # Bean should be deleted from store
+        from beans.store import Store
+        s = Store.from_path(str(tmp_beans_dir / "beans.db"))
+        remaining = s.list()
+        s.close()
+        assert all(b.id != a.id for b in remaining)
+
+        # Selection should be cleared
+        assert win._scene.selected_id is None
+        win.close()
+
+    def test_delete_bean_cancel(self, tmp_beans_dir, store, qtbot, monkeypatch):
+        """Cancelling delete keeps the bean intact."""
+        a = api.create_bean(store, "Task A")
+        store.close()
+        win = MainWindow(tmp_beans_dir)
+        qtbot.addWidget(win)
+        win.show()
+        qtbot.waitUntil(lambda: len(win._beans) > 0, timeout=2000)
+
+        # Select the bean first
+        win._on_node_selected(a.id)
+
+        # Monkeypatch QMessageBox.warning to return Cancel
+        monkeypatch.setattr(
+            QMessageBox, "warning",
+            lambda *args, **kwargs: QMessageBox.StandardButton.Cancel,
+        )
+
+        win._on_delete_bean(a.id)
+
+        # Bean should still exist in store
+        from beans.store import Store
+        s = Store.from_path(str(tmp_beans_dir / "beans.db"))
+        remaining = s.list()
+        s.close()
+        assert any(b.id == a.id for b in remaining)
+
+        # Selection should still be set
+        assert win._scene.selected_id == a.id
         win.close()

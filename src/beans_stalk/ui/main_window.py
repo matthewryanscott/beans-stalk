@@ -4,7 +4,7 @@ import sys
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QMainWindow, QSplitter, QFileDialog, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QMainWindow, QMessageBox, QSplitter, QFileDialog, QWidget, QVBoxLayout
 
 from beans.models import Bean, Dep
 from beans_stalk.config import StalkConfig
@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
         self._scene.selection_cleared.connect(self._sidebar.clear_selection)
         self._scene.dep_toggle_requested.connect(self._on_dep_toggle)
         self._scene.dep_remove_requested.connect(self._on_dep_remove)
+        self._scene.delete_requested.connect(self._on_delete_bean)
         self._sidebar.save_requested.connect(self._on_save_bean)
         self._sidebar.close_bean_requested.connect(self._on_close_bean)
         self._sidebar.claim_requested.connect(self._on_claim_bean)
@@ -276,6 +277,38 @@ class MainWindow(QMainWindow):
             self._store.remove_dep(from_id, to_id)
         except Exception as e:
             self._sidebar.show_status(str(e))
+
+    @Slot(str)
+    def _on_delete_bean(self, bean_id: str):
+        bean = next((b for b in self._beans if b.id == bean_id), None)
+        if bean is None:
+            return
+        n_children = sum(1 for b in self._beans if b.parent_id == bean_id)
+        n_deps = sum(1 for d in self._deps if d.from_id == bean_id or d.to_id == bean_id)
+        title = bean.title
+        deps_s = "dependency" if n_deps == 1 else "dependencies"
+        children_s = "child" if n_children == 1 else "children"
+        if n_deps and n_children:
+            msg = f"Delete '{title}' and its {n_deps} {deps_s}? Its {n_children} {children_s} will become orphaned. This cannot be undone."
+        elif n_deps:
+            msg = f"Delete '{title}' and its {n_deps} {deps_s}? This cannot be undone."
+        elif n_children:
+            msg = f"Delete '{title}'? Its {n_children} {children_s} will become orphaned. This cannot be undone."
+        else:
+            msg = f"Delete '{title}'? This cannot be undone."
+        result = QMessageBox.warning(
+            self, "Delete Bean", msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if result == QMessageBox.StandardButton.Yes:
+            try:
+                self._store.delete_bean(bean_id)
+            except Exception as e:
+                self._sidebar.show_status(str(e))
+                return
+            self._scene.selected_id = None
+            self._sidebar.clear_selection()
 
     @Slot(str, dict)
     def _on_save_bean(self, bean_id: str, fields: dict):
