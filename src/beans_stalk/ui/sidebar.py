@@ -7,6 +7,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
     QComboBox,
+    QMessageBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -293,6 +294,42 @@ class Sidebar(QWidget):
         self._stack.setCurrentIndex(1)
         self._status_label.setText(message)
         self._status_label.setVisible(True)
+
+    def has_unsaved_changes(self) -> bool:
+        """Check if the current form has been modified from the loaded bean."""
+        if self._current_bean is None:
+            if self._creating:
+                return bool(self._title_edit.text().strip())
+            return False
+        bean = self._current_bean
+        if self._title_edit.text() != bean.title:
+            return True
+        if self._type_combo.currentText() != bean.type:
+            return True
+        if self._priority_spin.value() != bean.priority:
+            return True
+        if (self._parent_edit.text() or None) != bean.parent_id:
+            return True
+        if self._body_edit.toPlainText() != bean.body:
+            return True
+        return False
+
+    def check_unsaved_changes(self) -> bool:
+        """If there are unsaved changes, prompt the user. Returns True if OK to proceed."""
+        if not self.has_unsaved_changes():
+            return True
+        result = QMessageBox.question(
+            self,
+            "Unsaved Changes",
+            "There are unsaved changes. Would you like to save them before navigating away?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+        )
+        if result == QMessageBox.StandardButton.Yes:
+            self._on_save()
+            return True
+        if result == QMessageBox.StandardButton.No:
+            return True
+        return False  # Cancel
 
     def _collect_fields(self) -> dict:
         """Gather current field values into a dict."""

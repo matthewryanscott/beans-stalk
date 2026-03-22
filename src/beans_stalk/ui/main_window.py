@@ -163,6 +163,8 @@ class MainWindow(QMainWindow):
 
     def _apply_navigation(self, parent_id):
         """Update scene to show a parent level. Does NOT touch breadcrumb."""
+        if not self._sidebar.check_unsaved_changes():
+            return
         self._save_viewport()
         self._scene.selected_id = None
         self._scene.current_parent_id = parent_id
@@ -234,6 +236,8 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_node_selected(self, bean_id: str):
+        if not self._sidebar.check_unsaved_changes():
+            return
         bean = next((b for b in self._beans if b.id == bean_id), None)
         if bean:
             self._sidebar.show_bean(bean, self._deps)
@@ -368,6 +372,9 @@ class MainWindow(QMainWindow):
             self._on_open_dir(dir_path)
 
     def closeEvent(self, event):
+        if not self._sidebar.check_unsaved_changes():
+            event.ignore()
+            return
         self._save_viewport()
         geo = self.geometry()
         self._config.window_geometry = {
