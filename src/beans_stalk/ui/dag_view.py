@@ -24,6 +24,7 @@ class DagView(QGraphicsView):
         self._pan_start = QPointF()
         self._shift_dragging = False
         self._shift_drag_source: BeanNode | None = None
+        self.locked = False  # when True, only panning/zooming allowed
 
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -82,7 +83,7 @@ class DagView(QGraphicsView):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            if not self.locked and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 item = self.itemAt(event.pos())
                 if isinstance(item, BeanNode):
                     self._shift_dragging = True
@@ -95,12 +96,16 @@ class DagView(QGraphicsView):
                     return
             else:
                 item = self.itemAt(event.pos())
-                if item is None:
-                    self._dag_scene.selected_id = None
+                if item is None or self.locked:
+                    if not self.locked:
+                        self._dag_scene.selected_id = None
                     self._panning = True
                     self._pan_start = event.position()
                     self.setCursor(Qt.CursorShape.ClosedHandCursor)
                     event.accept()
+                    return
+                if not self.locked:
+                    super().mousePressEvent(event)
                     return
         super().mousePressEvent(event)
 
@@ -132,13 +137,16 @@ class DagView(QGraphicsView):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape and not self.locked:
             self._dag_scene.selected_id = None
             event.accept()
             return
         super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
+        if self.locked:
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             item = self.itemAt(event.pos())
             if isinstance(item, BeanNode):
@@ -168,6 +176,9 @@ class DagView(QGraphicsView):
         self.centerOn(state.get("center_x", 0.0), state.get("center_y", 0.0))
 
     def contextMenuEvent(self, event):
+        if self.locked:
+            event.accept()
+            return
         item = self.itemAt(event.pos())
         menu = QMenu(self)
         if isinstance(item, BeanNode):

@@ -1,4 +1,8 @@
-from PySide6.QtCore import Qt, Signal
+import os
+import tempfile
+from pathlib import Path
+
+from PySide6.QtCore import Qt, Signal, QProcess
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -32,6 +36,9 @@ class Sidebar(QWidget):
     remove_dep_requested = Signal(str, str)
     color_changed = Signal(str, str)
 
+    editing_started = Signal()
+    editing_finished = Signal()
+
     def __init__(self, config: StalkConfig, parent=None):
         super().__init__(parent)
         self._config = config
@@ -39,6 +46,9 @@ class Sidebar(QWidget):
         self._current_deps: list[Dep] = []
         self._creating = False
         self._pre_filled: dict = {}
+        self._editor_cmd = os.environ.get("EDITOR")
+        self._editor_process: QProcess | None = None
+        self._editor_tmp_path: Path | None = None
         self._setup_ui()
         self.show()
 
@@ -130,7 +140,19 @@ class Sidebar(QWidget):
         layout.addWidget(self._ref_id_display)
 
         # Body — stretches to fill available vertical space (editable)
-        layout.addWidget(QLabel("Body"))
+        body_header = QHBoxLayout()
+        body_header.addWidget(QLabel("Body"))
+        editor_name = Path(self._editor_cmd).name if self._editor_cmd else None
+        self._edit_external_btn = QPushButton(f"Edit with {editor_name}")
+        self._edit_external_btn.clicked.connect(self._on_edit_external)
+        self._edit_external_btn.setVisible(bool(self._editor_cmd))
+        body_header.addWidget(self._edit_external_btn)
+        self._editing_label = QLabel(f"(editing with {editor_name})")
+        self._editing_label.setStyleSheet("color: #888; font-size: 11px; font-style: italic;")
+        self._editing_label.setVisible(False)
+        body_header.addWidget(self._editing_label)
+        body_header.addStretch()
+        layout.addLayout(body_header)
         self._body_edit = QTextEdit()
         self._body_edit.setMinimumHeight(80)
         layout.addWidget(self._body_edit, 1)  # stretch factor 1
@@ -294,6 +316,54 @@ class Sidebar(QWidget):
                 "body": self._body_edit.toPlainText(),
             }
         return fields
+
+    def _set_editing_mode(self, editing: bool):
+        """Enable/disable the form while an external editor is open."""
+        self._edit_external_btn.setVisible(not editing and bool(self._editor_cmd))
+        self._editing_label.setVisible(editing)
+        self._title_edit.setEnabled(not editing)
+        self._type_combo.setEnabled(not editing)
+        self._priority_spin.setEnabled(not editing)
+        self._parent_edit.setEnabled(not editing)
+        self._body_edit.setEnabled(not editing)
+        self._save_btn.setEnabled(not editing)
+        self._claim_btn.setEnabled(not editing)
+        self._release_btn.setEnabled(not editing)
+        self._close_btn.setEnabled(not editing)
+        if editing:
+            self.editing_started.emit()
+        else:
+            self.editing_finished.emit()
+
+    def _on_edit_external(self):
+        """Launch $EDITOR with body contents in a temp markdown file."""
+        if not self._editor_cmd or self._editor_process is not None:
+            return
+
+        # Write current body to temp file
+        body = self._body_edit.toPlainText()
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", prefix="bean-body-", delete=False
+        )
+        tmp.write(body)
+        tmp.close()
+        self._editor_tmp_path = Path(tmp.name)
+
+        self._set_editing_mode(True)
+
+        self._editor_process = QProcess(self)
+        self._editor_process.finished.connect(self._on_editor_finished)
+        self._editor_process.start(self._editor_cmd, [str(self._editor_tmp_path)])
+
+    def _on_editor_finished(self):
+        """Read back the temp file and update the body field."""
+        if self._editor_tmp_path and self._editor_tmp_path.exists():
+            body = self._editor_tmp_path.read_text()
+            self._body_edit.setPlainText(body)
+            self._editor_tmp_path.unlink(missing_ok=True)
+        self._editor_tmp_path = None
+        self._editor_process = None
+        self._set_editing_mode(False)
 
     def _on_claim(self):
         """Handle claim button click."""

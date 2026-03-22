@@ -92,6 +92,8 @@ class MainWindow(QMainWindow):
         self._sidebar.add_dep_requested.connect(self._on_add_dep)
         self._sidebar.remove_dep_requested.connect(self._on_dep_remove)
         self._sidebar.color_changed.connect(self._on_color_changed)
+        self._sidebar.editing_started.connect(self._on_editing_started)
+        self._sidebar.editing_finished.connect(self._on_editing_finished)
         self._view.new_bean_requested.connect(lambda: self._sidebar.start_new_bean())
         self._view.new_child_requested.connect(
             lambda pid: self._sidebar.start_new_bean({"parent_id": pid})
@@ -308,6 +310,16 @@ class MainWindow(QMainWindow):
             self._store.add_dep(from_id, to_id)
         except Exception as e:
             self._sidebar.show_status(str(e))
+
+    def _on_editing_started(self):
+        """Lock the UI while an external editor is open."""
+        self._view.locked = True
+        self._breadcrumb.setEnabled(False)
+
+    def _on_editing_finished(self):
+        """Unlock the UI after the external editor closes."""
+        self._view.locked = False
+        self._breadcrumb.setEnabled(True)
 
     @Slot(str)
     def _on_view_in_new_window(self, bean_id: str):
