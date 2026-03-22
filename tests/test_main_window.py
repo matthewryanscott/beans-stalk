@@ -55,3 +55,72 @@ class TestMainWindow:
         win._on_node_selected(a.id)
         assert win._sidebar._title_edit.text() == "Task A"
         win.close()
+
+    def test_cancel_unsaved_reverts_highlight_to_original_node(
+        self, tmp_beans_dir, store, qtbot, monkeypatch
+    ):
+        """Bug fix: cancelling unsaved-changes dialog should revert highlight
+        back to node A, not leave node B highlighted."""
+        a = api.create_bean(store, "Task A")
+        b = api.create_bean(store, "Task B")
+        store.close()
+        win = MainWindow(tmp_beans_dir)
+        qtbot.addWidget(win)
+        win.show()
+        qtbot.waitUntil(lambda: len(win._beans) > 0, timeout=2000)
+
+        # Select node A and edit its title
+        win._scene._on_node_clicked(a.id)
+        win._sidebar._title_edit.setText("Task A edited")
+
+        # Monkeypatch dialog to return Cancel
+        from PySide6.QtWidgets import QMessageBox
+        monkeypatch.setattr(
+            QMessageBox, "question",
+            lambda *a, **kw: QMessageBox.StandardButton.Cancel,
+        )
+
+        # Click node B — should be rejected by cancel
+        win._scene._on_node_clicked(b.id)
+
+        # After cancel: node A should still be selected/highlighted, not B
+        assert win._scene.selected_id == a.id
+        assert win._scene._nodes[a.id].isSelected()
+        assert not win._scene._nodes[b.id].isSelected()
+        assert win._sidebar._title_edit.text() == "Task A edited"
+        win.close()
+
+    def test_clicking_same_node_with_edits_does_not_prompt(
+        self, tmp_beans_dir, store, qtbot, monkeypatch
+    ):
+        """Bug fix: clicking the already-selected node should not trigger
+        the unsaved-changes dialog."""
+        a = api.create_bean(store, "Task A")
+        store.close()
+        win = MainWindow(tmp_beans_dir)
+        qtbot.addWidget(win)
+        win.show()
+        qtbot.waitUntil(lambda: len(win._beans) > 0, timeout=2000)
+
+        # Select node A and edit its title
+        win._scene._on_node_clicked(a.id)
+        win._sidebar._title_edit.setText("Task A edited")
+
+        # Monkeypatch dialog to blow up if called
+        from PySide6.QtWidgets import QMessageBox
+        dialog_called = False
+
+        def fail_dialog(*args, **kwargs):
+            nonlocal dialog_called
+            dialog_called = True
+            return QMessageBox.StandardButton.Cancel
+
+        monkeypatch.setattr(QMessageBox, "question", fail_dialog)
+
+        # Click node A again — should NOT trigger dialog
+        win._scene._on_node_clicked(a.id)
+
+        assert not dialog_called
+        # Edits should be preserved
+        assert win._sidebar._title_edit.text() == "Task A edited"
+        win.close()

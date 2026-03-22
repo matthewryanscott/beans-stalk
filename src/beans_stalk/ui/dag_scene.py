@@ -273,7 +273,8 @@ class DagScene(QGraphicsScene):
         return elapsed < self._fade_minutes
 
     def _on_node_clicked(self, bean_id: str):
-        self.selected_id = bean_id
+        if bean_id == self._selected_id:
+            return
         self.node_clicked.emit(bean_id)
 
     def _show_placeholder(self, message="No beans yet \u2014 create one with Cmd-N or right-click"):

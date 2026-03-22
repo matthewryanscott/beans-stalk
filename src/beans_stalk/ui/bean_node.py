@@ -271,4 +271,5 @@ class BeanNode(QGraphicsObject):
         if event.button() == Qt.MouseButton.LeftButton:
             if not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 self.clicked.emit(self._bean.id)
+                return  # Selection is managed by DagScene.selected_id
         super().mousePressEvent(event)

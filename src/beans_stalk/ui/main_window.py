@@ -237,7 +237,10 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_node_selected(self, bean_id: str):
         if not self._sidebar.check_unsaved_changes():
+            # Re-assert the previous selection so Qt item states are restored
+            self._scene.selected_id = self._scene.selected_id
             return
+        self._scene.selected_id = bean_id
         bean = next((b for b in self._beans if b.id == bean_id), None)
         if bean:
             self._sidebar.show_bean(bean, self._deps)
