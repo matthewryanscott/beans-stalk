@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QPointF, QEasingCurve, QPropertyAnimation, Signal
@@ -225,22 +226,121 @@ class DagScene(QGraphicsScene):
                 outgoing[dep.from_id].append(dep.to_id)
                 incoming[dep.to_id].append(dep.from_id)
 
-        # Sort each group by the connected node's X position
         def _center_x(nid):
             if nid in new_positions:
                 w = node_sizes.get(nid, (140, 40))[0]
                 return new_positions[nid][0] + w / 2
             return 0
 
-        for src, targets in outgoing.items():
-            targets.sort(key=_center_x)
-        for tgt, sources in incoming.items():
-            sources.sort(key=_center_x)
+        def _center_y(nid):
+            if nid in new_positions:
+                h = node_sizes.get(nid, (140, 40))[1]
+                return new_positions[nid][1] + h / 2
+            return 0
 
-        def _port_frac(index: int, total: int) -> float:
-            if total <= 1:
-                return 0.5
-            return index / (total - 1)
+        def _aim_frac(anchor_id, peer_id):
+            """Compute a port fraction that aims the edge toward the peer node.
+
+            Uses the angle from anchor to peer to determine the exit point.
+            Edges to nodes directly below exit from center; edges to nodes
+            far to the side exit from the corresponding edge.
+            """
+            anchor_cx = _center_x(anchor_id)
+            peer_cx = _center_x(peer_id)
+            dx = peer_cx - anchor_cx
+            dy = abs(_center_y(peer_id) - _center_y(anchor_id))
+            if dy < 1:
+                dy = 1
+            # atan2 gives the angle; scale so purely vertical = 0.5,
+            # purely horizontal = 0.0 or 1.0
+            angle = math.atan2(dx, dy)  # range [-pi/2, pi/2]
+            # Map to [0, 1]: -pi/2 -> 0, 0 -> 0.5, pi/2 -> 1
+            raw = 0.5 + angle / math.pi
+            return max(0.0, min(1.0, raw))
+
+        # For nodes with multiple edges, sort and spread ports to avoid crossing
+        for src, targets in outgoing.items():
+            targets.sort(key=lambda nid: _center_x(nid))
+        for tgt, sources in incoming.items():
+            sources.sort(key=lambda nid: _center_x(nid))
+
+        def _spread_fracs(anchor_id, peer_ids):
+            """Compute port fractions for multiple edges from/to one node.
+
+            Uses aim-based fractions but ensures minimum spacing between
+            adjacent ports, then re-sorts to prevent crossing.
+            """
+            n = len(peer_ids)
+            if n == 0:
+                return {}
+            if n == 1:
+                return {peer_ids[0]: _aim_frac(anchor_id, peer_ids[0])}
+            # Compute aimed fracs (peer_ids already sorted by X)
+            fracs = [_aim_frac(anchor_id, pid) for pid in peer_ids]
+            # Enforce minimum spacing between adjacent ports
+            min_gap = min(0.15, 0.8 / max(n - 1, 1))
+            for i in range(1, n):
+                if fracs[i] - fracs[i - 1] < min_gap:
+                    fracs[i] = fracs[i - 1] + min_gap
+            # If we exceeded [0, 1], shift everything back
+            if fracs[-1] > 1.0:
+                shift = fracs[-1] - 1.0
+                fracs = [max(0.0, f - shift) for f in fracs]
+            # Re-enforce spacing after shift
+            for i in range(1, n):
+                if fracs[i] - fracs[i - 1] < min_gap:
+                    fracs[i] = fracs[i - 1] + min_gap
+            return {pid: f for pid, f in zip(peer_ids, fracs)}
+
+        out_fracs: dict[str, dict[str, float]] = {}
+        for src, targets in outgoing.items():
+            out_fracs[src] = _spread_fracs(src, targets)
+        in_fracs: dict[str, dict[str, float]] = {}
+        for tgt, sources in incoming.items():
+            in_fracs[tgt] = _spread_fracs(tgt, sources)
+
+        # Build list of node bounding rects for obstacle detection
+        node_rects: list[tuple[str, float, float, float, float]] = []
+        for nid in new_positions:
+            nx, ny = new_positions[nid]
+            nw, nh = node_sizes.get(nid, (140, 40))
+            node_rects.append((nid, nx, ny, nw, nh))
+
+        def _find_obstacle_side(from_id, to_id, from_frac, to_frac):
+            """Check if an edge's bezier would pass through any intermediate node.
+
+            Returns 'left', 'right', or None.
+            """
+            fx, fy = new_positions[from_id]
+            fw, fh = node_sizes.get(from_id, (140, 40))
+            tx, ty = new_positions[to_id]
+            tw, _ = node_sizes.get(to_id, (140, 40))
+            # Compute the bezier midpoint (approximate — use average of start/end X)
+            from_margin = min(8, fw * 0.1)
+            to_margin = min(8, tw * 0.1)
+            start_x = fx + from_margin + (fw - 2 * from_margin) * from_frac
+            end_x = tx + to_margin + (tw - 2 * to_margin) * to_frac
+            mid_x = (start_x + end_x) / 2
+            min_y = min(fy + fh, ty) + 5   # just below source bottom
+            max_y = max(fy + fh, ty) - 5   # just above target top
+            if min_y >= max_y:
+                return None
+            for nid, nx, ny, nw, nh in node_rects:
+                if nid == from_id or nid == to_id:
+                    continue
+                # Check if node is vertically between source and target
+                if ny + nh < min_y or ny > max_y:
+                    continue
+                # Check if the bezier midpoint X is within the node's horizontal span
+                margin = 15  # extra clearance
+                if nx - margin <= mid_x <= nx + nw + margin:
+                    # Obstacle found — determine which side has more room
+                    node_cx = nx + nw / 2
+                    if mid_x <= node_cx:
+                        return "left"   # edge is on left side of obstacle, push further left
+                    else:
+                        return "right"
+            return None
 
         # Add/update edges
         for dep in deps:
@@ -253,10 +353,16 @@ class DagScene(QGraphicsScene):
                 self.addItem(edge)
             edge = self._edges[key]
             if dep.from_id in new_positions and dep.to_id in new_positions:
-                out_list = outgoing[dep.from_id]
-                in_list = incoming[dep.to_id]
-                from_frac = _port_frac(out_list.index(dep.to_id), len(out_list))
-                to_frac = _port_frac(in_list.index(dep.from_id), len(in_list))
+                from_frac = out_fracs.get(dep.from_id, {}).get(dep.to_id, 0.5)
+                to_frac = in_fracs.get(dep.to_id, {}).get(dep.from_id, 0.5)
+                # Deflect edges that would pass through intermediate nodes
+                side = _find_obstacle_side(dep.from_id, dep.to_id, from_frac, to_frac)
+                if side == "left":
+                    from_frac = min(from_frac, 0.1)
+                    to_frac = min(to_frac, 0.1)
+                elif side == "right":
+                    from_frac = max(from_frac, 0.9)
+                    to_frac = max(to_frac, 0.9)
                 edge.update_path(
                     QPointF(*new_positions[dep.from_id]),
                     node_sizes.get(dep.from_id, (140, 40)),
