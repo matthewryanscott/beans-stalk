@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
     QComboBox,
+    QMenu,
     QMessageBox,
     QGroupBox,
     QHBoxLayout,
@@ -37,6 +38,7 @@ class Sidebar(QWidget):
     add_dep_requested = Signal(str, str)
     remove_dep_requested = Signal(str, str)
     color_changed = Signal(str, str)
+    navigate_to_bean = Signal(str)  # bean_id — select and center on a bean
 
     editing_started = Signal()
     editing_finished = Signal()
@@ -46,6 +48,8 @@ class Sidebar(QWidget):
         self._config = config
         self._current_bean: Bean | None = None
         self._current_deps: list[Dep] = []
+        self._all_beans: list[Bean] = []
+        self._visible_bean_ids: set[str] = set()
         self._creating = False
         self._pre_filled: dict = {}
         self._editor_cmd = os.environ.get("EDITOR")
@@ -209,6 +213,28 @@ class Sidebar(QWidget):
         self._priority_spin.valueChanged.connect(self._update_save_enabled)
         self._body_edit.textChanged.connect(self._update_save_enabled)
 
+        # Blocks section (this bean blocks others)
+        self._blocks_group = QGroupBox("Blocks")
+        blocks_layout = QVBoxLayout(self._blocks_group)
+        blocks_layout.setSpacing(2)
+        self._blocks_list = QVBoxLayout()
+        blocks_layout.addLayout(self._blocks_list)
+        self._add_blocks_btn = QPushButton("+ Add")
+        self._add_blocks_btn.clicked.connect(self._on_add_blocks)
+        blocks_layout.addWidget(self._add_blocks_btn)
+        layout.addWidget(self._blocks_group)
+
+        # Blocked by section (others block this bean)
+        self._blocked_by_group = QGroupBox("Blocked by")
+        blocked_by_layout = QVBoxLayout(self._blocked_by_group)
+        blocked_by_layout.setSpacing(2)
+        self._blocked_by_list = QVBoxLayout()
+        blocked_by_layout.addLayout(self._blocked_by_list)
+        self._add_blocked_by_btn = QPushButton("+ Add")
+        self._add_blocked_by_btn.clicked.connect(self._on_add_blocked_by)
+        blocked_by_layout.addWidget(self._add_blocked_by_btn)
+        layout.addWidget(self._blocked_by_group)
+
         # Claim section (shown for open beans)
         self._claim_spacer = QWidget()
         self._claim_spacer.setFixedHeight(16)
@@ -263,6 +289,11 @@ class Sidebar(QWidget):
         self._current_deps = []
         self._creating = False
         self._stack.setCurrentIndex(0)
+
+    def set_context(self, all_beans: list[Bean], visible_ids: set[str]):
+        """Update the list of all beans and visible IDs for dep menus."""
+        self._all_beans = all_beans
+        self._visible_bean_ids = visible_ids
 
     def _editable_widgets(self):
         """Return widgets whose changes affect the save button."""
@@ -339,6 +370,8 @@ class Sidebar(QWidget):
         self._close_group.setVisible(not is_closed)
         self._close_spacer.setVisible(not is_closed)
 
+        # Populate dependency sections
+        self._populate_deps(bean, deps)
 
     def start_new_bean(self, prefill: dict | None = None):
         """Switch to create-new-bean mode, optionally pre-filling fields."""
@@ -378,6 +411,8 @@ class Sidebar(QWidget):
         self._close_group.setVisible(False)
         self._close_spacer.setVisible(False)
         self._meta_group.setVisible(False)
+        self._blocks_group.setVisible(False)
+        self._blocked_by_group.setVisible(False)
 
         self._title_edit.setFocus()
 
@@ -525,6 +560,164 @@ class Sidebar(QWidget):
         if self._current_bean is not None:
             reason = self._close_reason_edit.text()
             self.close_bean_requested.emit(str(self._current_bean.id), reason)
+
+    def _clear_layout(self, layout):
+        """Remove all widgets from a layout."""
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+    def _populate_deps(self, bean: Bean, deps: list[Dep]):
+        """Populate the blocks/blocked-by sections."""
+        bean_map = {b.id: b for b in self._all_beans}
+
+        # This bean blocks others (from_id == bean.id)
+        blocks = [d for d in deps if d.from_id == bean.id]
+        self._clear_layout(self._blocks_list)
+        for dep in blocks:
+            target = bean_map.get(dep.to_id)
+            title = target.title if target else dep.to_id
+            row = QHBoxLayout()
+            link = QPushButton(title)
+            link.setFlat(True)
+            link.setStyleSheet("text-align: left; color: #6cb4ee; padding: 1px 0;")
+            link.setCursor(Qt.CursorShape.PointingHandCursor)
+            tid = dep.to_id
+            link.clicked.connect(lambda checked=False, bid=tid: self.navigate_to_bean.emit(bid))
+            row.addWidget(link, 1)
+            remove_btn = QPushButton("×")
+            remove_btn.setFixedSize(20, 20)
+            fid, tid2 = dep.from_id, dep.to_id
+            remove_btn.clicked.connect(
+                lambda checked=False, f=fid, t=tid2: self.remove_dep_requested.emit(f, t)
+            )
+            row.addWidget(remove_btn)
+            container = QWidget()
+            container.setLayout(row)
+            self._blocks_list.addWidget(container)
+        self._blocks_group.setVisible(True)
+
+        # This bean is blocked by others (to_id == bean.id)
+        blocked_by = [d for d in deps if d.to_id == bean.id]
+        self._clear_layout(self._blocked_by_list)
+        for dep in blocked_by:
+            source = bean_map.get(dep.from_id)
+            title = source.title if source else dep.from_id
+            row = QHBoxLayout()
+            link = QPushButton(title)
+            link.setFlat(True)
+            link.setStyleSheet("text-align: left; color: #6cb4ee; padding: 1px 0;")
+            link.setCursor(Qt.CursorShape.PointingHandCursor)
+            sid = dep.from_id
+            link.clicked.connect(lambda checked=False, bid=sid: self.navigate_to_bean.emit(bid))
+            row.addWidget(link, 1)
+            remove_btn = QPushButton("×")
+            remove_btn.setFixedSize(20, 20)
+            fid, tid = dep.from_id, dep.to_id
+            remove_btn.clicked.connect(
+                lambda checked=False, f=fid, t=tid: self.remove_dep_requested.emit(f, t)
+            )
+            row.addWidget(remove_btn)
+            container = QWidget()
+            container.setLayout(row)
+            self._blocked_by_list.addWidget(container)
+        self._blocked_by_group.setVisible(True)
+
+    def _reachable_from(self, start_id: str, deps: list[Dep]) -> set[str]:
+        """Return all bean IDs reachable from start_id following dep edges."""
+        visited = set()
+        stack = [start_id]
+        while stack:
+            nid = stack.pop()
+            if nid in visited:
+                continue
+            visited.add(nid)
+            for d in deps:
+                if d.from_id == nid and d.to_id not in visited:
+                    stack.append(d.to_id)
+        return visited
+
+    def _dep_candidates(self, direction: str) -> list[Bean]:
+        """Return beans eligible for adding as a dep, excluding self and cycle-creators."""
+        if self._current_bean is None:
+            return []
+        bean_id = self._current_bean.id
+        deps = self._current_deps
+        # Already connected
+        if direction == "blocks":
+            existing = {d.to_id for d in deps if d.from_id == bean_id}
+        else:
+            existing = {d.from_id for d in deps if d.to_id == bean_id}
+
+        # Cycle detection: if adding "self blocks X", check X can't already reach self
+        # If adding "X blocks self", check self can't already reach X
+        candidates = []
+        for b in self._all_beans:
+            if b.id == bean_id:
+                continue
+            if b.id not in self._visible_bean_ids:
+                continue
+            if b.id in existing:
+                continue
+            # Check for cycles
+            if direction == "blocks":
+                # Would add edge: bean_id -> b.id
+                # Cycle if b.id can already reach bean_id
+                if bean_id in self._reachable_from(b.id, deps):
+                    continue
+            else:
+                # Would add edge: b.id -> bean_id
+                # Cycle if bean_id can already reach b.id
+                if b.id in self._reachable_from(bean_id, deps):
+                    continue
+            candidates.append(b)
+        return candidates
+
+    def _on_add_blocks(self):
+        """Show menu of beans this bean could block."""
+        self._show_dep_menu("blocks")
+
+    def _on_add_blocked_by(self):
+        """Show menu of beans that could block this bean."""
+        self._show_dep_menu("blocked_by")
+
+    def _show_dep_menu(self, direction: str):
+        """Show a popup menu to add a dependency."""
+        if self._current_bean is None:
+            return
+        candidates = self._dep_candidates(direction)
+        menu = QMenu(self)
+        # "New bean..." at top
+        new_action = menu.addAction("New bean...")
+        menu.addSeparator()
+        actions = {}
+        for b in candidates:
+            action = menu.addAction(b.title)
+            actions[action] = b
+        chosen = menu.exec(self._add_blocks_btn.mapToGlobal(
+            self._add_blocks_btn.rect().bottomLeft()
+        ) if direction == "blocks" else self._add_blocked_by_btn.mapToGlobal(
+            self._add_blocked_by_btn.rect().bottomLeft()
+        ))
+        if chosen is None:
+            return
+        if chosen is new_action:
+            prefill = {}
+            if direction == "blocks":
+                prefill["_add_blocks"] = self._current_bean.id
+            else:
+                prefill["_add_blocked_by"] = self._current_bean.id
+            self.start_new_bean(prefill)
+            return
+        target = actions.get(chosen)
+        if target:
+            bean_id = self._current_bean.id
+            if direction == "blocks":
+                self.add_dep_requested.emit(bean_id, target.id)
+            else:
+                self.add_dep_requested.emit(target.id, bean_id)
 
     def _copy_id(self):
         """Copy the current bean's ID to clipboard."""

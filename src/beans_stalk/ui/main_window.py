@@ -95,6 +95,7 @@ class MainWindow(QMainWindow):
         self._sidebar.add_dep_requested.connect(self._on_add_dep)
         self._sidebar.remove_dep_requested.connect(self._on_dep_remove)
         self._sidebar.color_changed.connect(self._on_color_changed)
+        self._sidebar.navigate_to_bean.connect(self._on_sidebar_navigate)
         self._sidebar.editing_started.connect(self._on_editing_started)
         self._sidebar.editing_finished.connect(self._on_editing_finished)
         self._view.new_bean_requested.connect(lambda: self._sidebar.start_new_bean())
@@ -235,6 +236,7 @@ class MainWindow(QMainWindow):
             self._toggle_completed_action.setChecked(show)
         self._scene.update_snapshot(beans, deps)
         self._view.update_scene_rect()
+        self._sidebar.set_context(beans, set(self._scene._nodes.keys()))
         if first_load:
             self._restore_viewport()
         if self._scene.selected_id:
@@ -243,6 +245,17 @@ class MainWindow(QMainWindow):
             )
             if bean:
                 self._sidebar.show_bean(bean, deps)
+
+    @Slot(str)
+    def _on_sidebar_navigate(self, bean_id: str):
+        """Navigate to a bean from the sidebar — selects and smoothly centers."""
+        if not self._sidebar.check_unsaved_changes():
+            return
+        self._scene.selected_id = bean_id
+        self._view.smooth_center_on_node(bean_id)
+        bean = next((b for b in self._beans if b.id == bean_id), None)
+        if bean:
+            self._sidebar.show_bean(bean, self._deps)
 
     @Slot(str)
     def _on_node_selected(self, bean_id: str):
@@ -363,6 +376,7 @@ class MainWindow(QMainWindow):
         self._scene.update_snapshot(beans, deps)
         self._view.update_scene_rect()
         self._scene.selected_id = bean.id
+        self._view.smooth_center_on_node(bean.id)
         self._sidebar.show_bean(bean, deps)
 
     @Slot(str, str)

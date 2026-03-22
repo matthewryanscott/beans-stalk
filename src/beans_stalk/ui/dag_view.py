@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QPointF, QEvent, QMarginsF, Signal
+from PySide6.QtCore import Qt, QPointF, QEvent, QMarginsF, Signal, QTimeLine
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QGraphicsView, QMenu
 
@@ -188,6 +188,27 @@ class DagView(QGraphicsView):
                 event.accept()
                 return
         super().mouseDoubleClickEvent(event)
+
+    def smooth_center_on_node(self, bean_id: str, duration_ms: int = 300):
+        """Smoothly animate the viewport to center on a specific node."""
+        node = self._dag_scene._nodes.get(bean_id)
+        if not node:
+            return
+        target = node.sceneBoundingRect().center()
+        start = self.mapToScene(self.viewport().rect().center())
+        timeline = QTimeLine(duration_ms, self)
+        timeline.setUpdateInterval(16)  # ~60fps
+
+        def _step(value):
+            x = start.x() + (target.x() - start.x()) * value
+            y = start.y() + (target.y() - start.y()) * value
+            self.centerOn(x, y)
+
+        timeline.valueChanged.connect(_step)
+        timeline.finished.connect(timeline.deleteLater)
+        # Store ref to prevent GC
+        self._center_anim = timeline
+        timeline.start()
 
     def get_viewport_state(self) -> dict[str, float]:
         """Return current center (scene coords) and scale."""
