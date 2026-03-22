@@ -173,6 +173,30 @@ class Sidebar(QWidget):
         body_container.addWidget(self._body_edit, 1)  # stretch factor 1
         layout.addLayout(body_container, 1)  # stretch factor 1
 
+        # Metadata section (read-only, shown for existing beans)
+        self._meta_group = QGroupBox("Details")
+        meta_layout = QVBoxLayout(self._meta_group)
+        meta_layout.setSpacing(2)
+
+        self._created_at_label = QLabel()
+        self._created_at_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        meta_layout.addWidget(self._created_at_label)
+
+        self._created_by_label = QLabel()
+        self._created_by_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        meta_layout.addWidget(self._created_by_label)
+
+        self._closed_at_label = QLabel()
+        self._closed_at_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        meta_layout.addWidget(self._closed_at_label)
+
+        self._close_reason_label = QLabel()
+        self._close_reason_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        self._close_reason_label.setWordWrap(True)
+        meta_layout.addWidget(self._close_reason_label)
+
+        layout.addWidget(self._meta_group)
+
         # Save button
         self._save_btn = QPushButton("Save")
         self._save_btn.setEnabled(False)
@@ -282,6 +306,23 @@ class Sidebar(QWidget):
         self._color_btn.setStyleSheet(f"background-color: {color};")
         self._color_btn.setVisible(bean.assignee is not None)
 
+        # Metadata
+        created_str = bean.created_at.strftime("%Y-%m-%d %H:%M") if bean.created_at else ""
+        self._created_at_label.setText(f"Created: {created_str}")
+        self._created_at_label.setVisible(bool(created_str))
+
+        self._created_by_label.setText(f"Created by: {bean.created_by}")
+        self._created_by_label.setVisible(bool(bean.created_by))
+
+        closed_str = bean.closed_at.strftime("%Y-%m-%d %H:%M") if bean.closed_at else ""
+        self._closed_at_label.setText(f"Closed: {closed_str}")
+        self._closed_at_label.setVisible(bool(closed_str))
+
+        self._close_reason_label.setText(f"Reason: {bean.close_reason}")
+        self._close_reason_label.setVisible(bool(bean.close_reason))
+
+        self._meta_group.setVisible(bool(created_str or bean.created_by or closed_str or bean.close_reason))
+
         # Show/hide action panels based on status
         is_open = bean.status == "open"
         is_in_progress = bean.status == "in_progress"
@@ -336,6 +377,7 @@ class Sidebar(QWidget):
         self._release_spacer.setVisible(False)
         self._close_group.setVisible(False)
         self._close_spacer.setVisible(False)
+        self._meta_group.setVisible(False)
 
         self._title_edit.setFocus()
 
