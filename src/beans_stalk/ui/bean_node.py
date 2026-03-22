@@ -12,6 +12,7 @@ CORNER_RADIUS = 6
 PRIORITY_RADIUS = 5
 LINE_HEIGHT_FACTOR = 1.15
 NODE_FONT = QFont("system-ui", 10)
+READY_BORDER_COLOR = "#4fc1ff"
 
 
 def _compute_node_size(title: str) -> tuple[float, float]:
@@ -79,6 +80,7 @@ class BeanNode(QGraphicsObject):
         self._bean = bean
         self._color = QColor(color)
         self._muted = muted
+        self._ready = False
         self._ghost = False
         self._pulsing = False
         self._pulse_phase = 0.0
@@ -138,6 +140,15 @@ class BeanNode(QGraphicsObject):
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         else:
             self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.update()
+
+    @property
+    def ready(self) -> bool:
+        return self._ready
+
+    @ready.setter
+    def ready(self, value: bool):
+        self._ready = value
         self.update()
 
     @property
@@ -208,6 +219,8 @@ class BeanNode(QGraphicsObject):
         if self._ghost:
             fill_color.setAlphaF(0.2)
             painter.setPen(QPen(fill_color.darker(130), border_width, Qt.PenStyle.DashLine))
+        elif self._ready and not self._muted:
+            painter.setPen(QPen(QColor(READY_BORDER_COLOR), max(border_width, 2.5)))
         else:
             painter.setPen(QPen(fill_color.darker(130), border_width))
         painter.setBrush(fill_color)

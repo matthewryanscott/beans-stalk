@@ -71,6 +71,19 @@ class TestBeanNodeGhost:
         assert node.cursor().shape() == Qt.CursorShape.ArrowCursor
 
 
+class TestBeanNodeReady:
+    def test_ready_default_false(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        assert not node.ready
+
+    def test_ready_setter(self, qapp):
+        node = BeanNode(_bean(), "#e06c75")
+        node.ready = True
+        assert node.ready
+        node.ready = False
+        assert not node.ready
+
+
 class TestBeanNodePulsing:
     def test_pulsing_default_false(self, qapp):
         node = BeanNode(_bean(), "#e06c75")
