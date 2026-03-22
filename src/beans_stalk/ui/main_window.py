@@ -142,6 +142,8 @@ class MainWindow(QMainWindow):
         key = self._viewport_key()
         state = self._view.get_viewport_state()
         state["show_completed"] = self._scene.show_completed
+        if self._scene.selected_id is not None:
+            state["selected_id"] = self._scene.selected_id
         self._config.viewports[key] = state
 
     def _restore_viewport(self):
@@ -152,6 +154,10 @@ class MainWindow(QMainWindow):
             show = state.get("show_completed", False)
             self._scene.show_completed = show
             self._toggle_completed_action.setChecked(show)
+            selected = state.get("selected_id")
+            if selected and selected in self._scene._nodes:
+                self._scene.selected_id = selected
+                self._scene.node_clicked.emit(selected)
 
     def _apply_navigation(self, parent_id):
         """Update scene to show a parent level. Does NOT touch breadcrumb."""
