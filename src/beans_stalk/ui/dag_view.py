@@ -61,8 +61,18 @@ class DagView(QGraphicsView):
         self.update_scene_rect()
 
     def wheelEvent(self, event):
-        """Scroll wheel scrolls the viewport — no zoom."""
-        super().wheelEvent(event)
+        """Scroll viewport — handles trackpad diagonal panning correctly."""
+        delta = event.pixelDelta()
+        if delta.isNull():
+            delta = event.angleDelta()
+        if not delta.isNull():
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - delta.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - delta.y()
+            )
+        event.accept()
 
     def event(self, event):
         """Handle gesture events for pinch-to-zoom."""

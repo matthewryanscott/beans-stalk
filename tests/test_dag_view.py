@@ -1,5 +1,5 @@
-from PySide6.QtCore import Qt, QPointF
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import Qt, QPoint, QPointF
+from PySide6.QtGui import QMouseEvent, QWheelEvent
 from beans.models import Bean
 from beans_stalk.config import StalkConfig
 from beans_stalk.ui.dag_scene import DagScene
@@ -146,3 +146,44 @@ class TestDagView:
                          pos=empty_pos)
 
         assert scene.selected_id is None
+
+    def test_trackpad_scroll_moves_both_axes(self, qtbot):
+        """Two-finger trackpad pan with diagonal pixelDelta should scroll both axes."""
+        config = StalkConfig()
+        scene = DagScene(config)
+        view = DagView(scene)
+        qtbot.addWidget(view)
+        view.show()
+        view.resize(800, 600)
+
+        # Add a node so scene rect is non-trivial
+        bean = Bean(id="bean-1", title="Node", status="open", type="task",
+                    priority=2, body="")
+        node = BeanNode(bean, "#336699")
+        scene.addItem(node)
+        node.setPos(0, 0)
+        view.update_scene_rect()
+
+        before_h = view.horizontalScrollBar().value()
+        before_v = view.verticalScrollBar().value()
+
+        # Simulate a trackpad scroll with diagonal pixelDelta
+        center = view.viewport().rect().center()
+        wheel_event = QWheelEvent(
+            QPointF(center),
+            view.viewport().mapToGlobal(center),
+            QPoint(-30, -20),                      # pixelDelta — diagonal
+            QPoint(-30, -20),                      # angleDelta
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+        view.wheelEvent(wheel_event)
+
+        after_h = view.horizontalScrollBar().value()
+        after_v = view.verticalScrollBar().value()
+
+        # Both axes should have moved
+        assert after_h != before_h, "horizontal scroll should have changed"
+        assert after_v != before_v, "vertical scroll should have changed"
