@@ -49,6 +49,16 @@ class TestBeanNode:
         assert node.pos() == QPointF(100, 200)
 
 
+    def test_child_count_default_zero(self, qapp):
+        node = BeanNode(_bean(), "#336699")
+        assert node.child_count == 0
+
+    def test_child_count_setter(self, qapp):
+        node = BeanNode(_bean(), "#336699")
+        node.child_count = 5
+        assert node.child_count == 5
+
+
 class TestBeanNodeGhost:
     def test_ghost_default_false(self, qapp):
         node = BeanNode(_bean(), "#e06c75")

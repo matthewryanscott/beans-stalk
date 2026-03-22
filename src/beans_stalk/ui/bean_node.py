@@ -87,6 +87,7 @@ class BeanNode(QGraphicsObject):
         self._pulse_anim: QPropertyAnimation | None = None
         self._hovered = False
         self._highlighted = False
+        self._child_count = 0
         self._width, self._height = _compute_node_size(bean.title)
         self.setAcceptHoverEvents(True)
         self.setFlag(self.GraphicsItemFlag.ItemIsSelectable, True)
@@ -127,6 +128,15 @@ class BeanNode(QGraphicsObject):
     @highlighted.setter
     def highlighted(self, value: bool):
         self._highlighted = value
+        self.update()
+
+    @property
+    def child_count(self) -> int:
+        return self._child_count
+
+    @child_count.setter
+    def child_count(self, value: int):
+        self._child_count = value
         self.update()
 
     @property
@@ -270,6 +280,28 @@ class BeanNode(QGraphicsObject):
             painter.drawEllipse(
                 QPointF(w - PRIORITY_RADIUS - 6, PRIORITY_RADIUS + 6),
                 PRIORITY_RADIUS, PRIORITY_RADIUS,
+            )
+
+        # Child count badge (top-right corner)
+        if self._child_count > 0 and not self._ghost and not self._muted:
+            badge_font = QFont("system-ui", 8)
+            badge_fm = QFontMetrics(badge_font)
+            badge_text = str(self._child_count)
+            text_width = badge_fm.horizontalAdvance(badge_text)
+            badge_w = max(text_width + 8, badge_fm.height() + 4)
+            badge_h = badge_fm.height() + 2
+            badge_x = w - badge_w - 4
+            badge_y = 4
+            badge_color = QColor(255, 255, 255, 64)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(badge_color)
+            painter.drawRoundedRect(QRectF(badge_x, badge_y, badge_w, badge_h), 3, 3)
+            painter.setPen(QColor(255, 255, 255, 200))
+            painter.setFont(badge_font)
+            painter.drawText(
+                QRectF(badge_x, badge_y, badge_w, badge_h),
+                Qt.AlignmentFlag.AlignCenter,
+                badge_text,
             )
 
     def hoverEnterEvent(self, event):
