@@ -353,7 +353,14 @@ class Sidebar(QWidget):
 
         self._editor_process = QProcess(self)
         self._editor_process.finished.connect(self._on_editor_finished)
-        self._editor_process.start(self._editor_cmd, [str(self._editor_tmp_path)])
+        editor_name = Path(self._editor_cmd).name
+        # Editors that return immediately without --wait
+        wait_flag_editors = {"code", "code-insiders", "subl", "atom", "zed"}
+        args = []
+        if editor_name in wait_flag_editors:
+            args.append("--wait")
+        args.append(str(self._editor_tmp_path))
+        self._editor_process.start(self._editor_cmd, args)
 
     def _on_editor_finished(self):
         """Read back the temp file and update the body field."""
