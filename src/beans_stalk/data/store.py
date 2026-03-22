@@ -46,5 +46,11 @@ class StalkStore:
     def remove_dep(self, from_id: str, to_id: str) -> int:
         return api.remove_dep(self.store, from_id, to_id)
 
+    def delete_bean(self, bean_id: str) -> Bean:
+        return api.delete_bean(self.store, bean_id)
+
+    def ready_bean_ids(self) -> set[str]:
+        return {b.id for b in api.ready_beans(self.store)}
+
     def show_bean(self, bean_id: str) -> Bean:
         return api.show_bean(self.store, bean_id)

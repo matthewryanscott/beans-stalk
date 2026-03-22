@@ -84,6 +84,26 @@ class TestStalkStore:
         assert released.status == "open"
         ss.close()
 
+    def test_delete_bean(self, tmp_beans_dir):
+        ss = StalkStore(tmp_beans_dir / "beans.db")
+        bean = ss.create_bean("To delete")
+        ss.delete_bean(bean.id)
+        beans, _ = ss.load_snapshot()
+        assert len(beans) == 0
+        ss.close()
+
+    def test_ready_bean_ids(self, tmp_beans_dir):
+        ss = StalkStore(tmp_beans_dir / "beans.db")
+        a = ss.create_bean("Ready A")
+        b = ss.create_bean("Ready B")
+        blocker = ss.create_bean("Blocker")
+        ss.add_dep(blocker.id, b.id)  # blocker blocks b
+        ready = ss.ready_bean_ids()
+        assert a.id in ready
+        assert b.id not in ready  # blocked
+        assert blocker.id in ready
+        ss.close()
+
     def test_data_version(self, tmp_beans_dir):
         ss = StalkStore(tmp_beans_dir / "beans.db")
         v1 = ss.data_version()
