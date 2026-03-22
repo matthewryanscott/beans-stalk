@@ -410,6 +410,8 @@ class Sidebar(QWidget):
         self._editor_tmp_path = None
         self._editor_process = None
         self._set_editing_mode(False)
+        self.window().raise_()
+        self.window().activateWindow()
 
     def _on_claim(self):
         """Handle claim button click."""
