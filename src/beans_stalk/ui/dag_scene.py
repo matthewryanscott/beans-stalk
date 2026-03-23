@@ -37,6 +37,15 @@ class DagScene(QGraphicsScene):
         self._current_parent_id: str | None = None
         self._parent_ids: set[str] = set()
         self._layout_algorithm = "sugiyama"
+        self._direction = "TB"
+
+    @property
+    def direction(self) -> str:
+        return self._direction
+
+    @direction.setter
+    def direction(self, value: str):
+        self._direction = value
 
     @property
     def layout_algorithm(self) -> str:
@@ -171,7 +180,7 @@ class DagScene(QGraphicsScene):
         graph = build_dag(beans, deps)
         visible_ids = set(visible_beans.keys())
         provider = get_provider(self._layout_algorithm)
-        new_positions = provider.compute(graph, visible_ids, node_sizes=node_sizes)
+        new_positions = provider.compute(graph, visible_ids, node_sizes=node_sizes, direction=self._direction)
         new_positions = stabilize_layout(new_positions, self._positions, self._selected_id)
 
         # Placeholder
@@ -286,8 +295,12 @@ class DagScene(QGraphicsScene):
             """
             anchor_cx = _center_x(anchor_id)
             peer_cx = _center_x(peer_id)
-            dx = peer_cx - anchor_cx
-            dy = abs(_center_y(peer_id) - _center_y(anchor_id))
+            if self._direction == "LR":
+                dx = _center_y(peer_id) - _center_y(anchor_id)
+                dy = abs(peer_cx - anchor_cx)
+            else:
+                dx = peer_cx - anchor_cx
+                dy = abs(_center_y(peer_id) - _center_y(anchor_id))
             if dy < 1:
                 dy = 1
             # atan2 gives the angle; scale so purely vertical = 0.5,
@@ -298,10 +311,11 @@ class DagScene(QGraphicsScene):
             return max(0.0, min(1.0, raw))
 
         # For nodes with multiple edges, sort and spread ports to avoid crossing
+        sort_key = _center_y if self._direction == "LR" else _center_x
         for src, targets in outgoing.items():
-            targets.sort(key=lambda nid: _center_x(nid))
+            targets.sort(key=sort_key)
         for tgt, sources in incoming.items():
-            sources.sort(key=lambda nid: _center_x(nid))
+            sources.sort(key=sort_key)
 
         def _spread_fracs(anchor_id, peer_ids):
             """Compute port fractions for multiple edges from/to one node.
@@ -353,33 +367,62 @@ class DagScene(QGraphicsScene):
             fx, fy = new_positions[from_id]
             fw, fh = node_sizes.get(from_id, (140, 40))
             tx, ty = new_positions[to_id]
-            tw, _ = node_sizes.get(to_id, (140, 40))
-            # Compute the bezier midpoint (approximate — use average of start/end X)
-            from_margin = min(8, fw * 0.1)
-            to_margin = min(8, tw * 0.1)
-            start_x = fx + from_margin + (fw - 2 * from_margin) * from_frac
-            end_x = tx + to_margin + (tw - 2 * to_margin) * to_frac
-            mid_x = (start_x + end_x) / 2
-            min_y = min(fy + fh, ty) + 5   # just below source bottom
-            max_y = max(fy + fh, ty) - 5   # just above target top
-            if min_y >= max_y:
+            tw, th = node_sizes.get(to_id, (140, 40))
+
+            if self._direction == "LR":
+                # In LR mode, edges go from right edge of source to left edge of target.
+                # Ports distribute vertically, so frac controls Y position.
+                from_margin = min(8, fh * 0.1)
+                to_margin = min(8, th * 0.1)
+                start_y = fy + from_margin + (fh - 2 * from_margin) * from_frac
+                end_y = ty + to_margin + (th - 2 * to_margin) * to_frac
+                mid_y = (start_y + end_y) / 2
+                min_x = min(fx + fw, tx) + 5   # just right of source right edge
+                max_x = max(fx + fw, tx) - 5   # just left of target left edge
+                if min_x >= max_x:
+                    return None
+                for nid, nx, ny, nw, nh in node_rects:
+                    if nid == from_id or nid == to_id:
+                        continue
+                    # Check if node is horizontally between source and target
+                    if nx + nw < min_x or nx > max_x:
+                        continue
+                    # Check if the bezier midpoint Y is within the node's vertical span
+                    margin = 15
+                    if ny - margin <= mid_y <= ny + nh + margin:
+                        node_cy = ny + nh / 2
+                        if mid_y <= node_cy:
+                            return "left"   # push edge upward (lower frac)
+                        else:
+                            return "right"  # push edge downward (higher frac)
                 return None
-            for nid, nx, ny, nw, nh in node_rects:
-                if nid == from_id or nid == to_id:
-                    continue
-                # Check if node is vertically between source and target
-                if ny + nh < min_y or ny > max_y:
-                    continue
-                # Check if the bezier midpoint X is within the node's horizontal span
-                margin = 15  # extra clearance
-                if nx - margin <= mid_x <= nx + nw + margin:
-                    # Obstacle found — determine which side has more room
-                    node_cx = nx + nw / 2
-                    if mid_x <= node_cx:
-                        return "left"   # edge is on left side of obstacle, push further left
-                    else:
-                        return "right"
-            return None
+            else:
+                # TB mode: edges go from bottom of source to top of target.
+                from_margin = min(8, fw * 0.1)
+                to_margin = min(8, tw * 0.1)
+                start_x = fx + from_margin + (fw - 2 * from_margin) * from_frac
+                end_x = tx + to_margin + (tw - 2 * to_margin) * to_frac
+                mid_x = (start_x + end_x) / 2
+                min_y = min(fy + fh, ty) + 5   # just below source bottom
+                max_y = max(fy + fh, ty) - 5   # just above target top
+                if min_y >= max_y:
+                    return None
+                for nid, nx, ny, nw, nh in node_rects:
+                    if nid == from_id or nid == to_id:
+                        continue
+                    # Check if node is vertically between source and target
+                    if ny + nh < min_y or ny > max_y:
+                        continue
+                    # Check if the bezier midpoint X is within the node's horizontal span
+                    margin = 15  # extra clearance
+                    if nx - margin <= mid_x <= nx + nw + margin:
+                        # Obstacle found — determine which side has more room
+                        node_cx = nx + nw / 2
+                        if mid_x <= node_cx:
+                            return "left"   # edge is on left side of obstacle, push further left
+                        else:
+                            return "right"
+                return None
 
         # Add/update edges
         for dep in deps:
@@ -409,6 +452,7 @@ class DagScene(QGraphicsScene):
                     node_sizes.get(dep.to_id, (140, 40)),
                     from_port_frac=from_frac,
                     to_port_frac=to_frac,
+                    direction=self._direction,
                 )
 
         self._positions = new_positions

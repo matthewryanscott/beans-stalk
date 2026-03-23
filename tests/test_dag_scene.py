@@ -105,6 +105,21 @@ class TestDagScene:
         assert scene._nodes[b.id].ready is False
         store.close()
 
+    def test_lr_direction_produces_horizontal_layout(self, qapp, tmp_beans_dir, store):
+        from beans import api as beans_api
+        a = beans_api.create_bean(store, "A")
+        b = beans_api.create_bean(store, "B")
+        beans_api.add_dep(store, a.id, b.id)
+        store.close()
+        stalk_store = StalkStore(tmp_beans_dir / "beans.db")
+        config = StalkConfig()
+        scene = DagScene(config, store=stalk_store)
+        scene.direction = "LR"
+        beans, deps = stalk_store.load_snapshot()
+        scene.update_snapshot(beans, deps)
+        assert scene._nodes[a.id].x() < scene._nodes[b.id].x()
+        stalk_store.close()
+
     def test_child_count_applied_to_nodes(self, qapp, tmp_path):
         db_path = tmp_path / "beans.db"
         store = StalkStore(db_path)
