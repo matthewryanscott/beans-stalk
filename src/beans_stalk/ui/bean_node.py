@@ -15,7 +15,10 @@ NODE_FONT = QFont("system-ui", 10)
 READY_BORDER_COLOR = "#4fc1ff"
 
 
-def _compute_node_size(title: str) -> tuple[float, float]:
+CHILD_COUNT_LINE_HEIGHT = 10  # extra height when showing child count indicator
+
+
+def _compute_node_size(title: str, has_children: bool = False) -> tuple[float, float]:
     """Compute node width and height based on title, allowing up to 2 lines."""
     fm = QFontMetrics(NODE_FONT)
     chrome = NODE_PADDING_H * 2 + PRIORITY_COL_WIDTH
@@ -26,26 +29,28 @@ def _compute_node_size(title: str) -> tuple[float, float]:
         # Single line fits — size to content
         width = max(NODE_MIN_WIDTH, full_width + chrome)
         height = fm.height() + NODE_PADDING_V * 2
-        return width, height
+    else:
+        # Need 2 lines — find the narrowest width where the title wraps into 2 lines
+        # by trying to balance the two lines (target ~half the text width)
+        target_text_w = full_width / 2
+        # Find the actual break point width — measure each word prefix
+        words = title.split()
+        best_text_w = text_avail_max
+        for i in range(1, len(words)):
+            line1 = " ".join(words[:i])
+            w = fm.horizontalAdvance(line1)
+            if w >= target_text_w:
+                # Also measure the second line to pick the more balanced split
+                line2 = " ".join(words[i:])
+                best_text_w = max(w, fm.horizontalAdvance(line2))
+                break
 
-    # Need 2 lines — find the narrowest width where the title wraps into 2 lines
-    # by trying to balance the two lines (target ~half the text width)
-    target_text_w = full_width / 2
-    # Find the actual break point width — measure each word prefix
-    words = title.split()
-    best_text_w = text_avail_max
-    for i in range(1, len(words)):
-        line1 = " ".join(words[:i])
-        w = fm.horizontalAdvance(line1)
-        if w >= target_text_w:
-            # Also measure the second line to pick the more balanced split
-            line2 = " ".join(words[i:])
-            best_text_w = max(w, fm.horizontalAdvance(line2))
-            break
+        line_height = int(fm.height() * LINE_HEIGHT_FACTOR)
+        height = line_height * 2 + NODE_PADDING_V * 2
+        width = min(NODE_MAX_WIDTH, max(NODE_MIN_WIDTH, best_text_w + chrome))
 
-    line_height = int(fm.height() * LINE_HEIGHT_FACTOR)
-    height = line_height * 2 + NODE_PADDING_V * 2
-    width = min(NODE_MAX_WIDTH, max(NODE_MIN_WIDTH, best_text_w + chrome))
+    if has_children:
+        height += CHILD_COUNT_LINE_HEIGHT
     return width, height
 
 
@@ -80,10 +85,11 @@ class BeanNode(QGraphicsObject):
         self._bean = bean
         self._color = QColor(color)
         self._muted = muted
-        self._ready = False
         self._ghost = False
         self._ready = False
         self._child_count = 0
+        self._open_child_count = 0
+        self._active_child_count = 0  # in_progress children
         self._pulsing = False
         self._pulse_phase = 0.0
         self._pulse_anim: QPropertyAnimation | None = None
@@ -109,7 +115,12 @@ class BeanNode(QGraphicsObject):
     @bean.setter
     def bean(self, value: Bean):
         self._bean = value
-        self._width, self._height = _compute_node_size(value.title)
+        self._recompute_size()
+
+    def _recompute_size(self):
+        self._width, self._height = _compute_node_size(
+            self._bean.title, has_children=self._child_count > 0
+        )
         self.prepareGeometryChange()
         self.update()
 
@@ -137,7 +148,29 @@ class BeanNode(QGraphicsObject):
 
     @child_count.setter
     def child_count(self, value: int):
+        had_children = self._child_count > 0
         self._child_count = value
+        if (value > 0) != had_children:
+            self._recompute_size()
+        else:
+            self.update()
+
+    @property
+    def open_child_count(self) -> int:
+        return self._open_child_count
+
+    @open_child_count.setter
+    def open_child_count(self, value: int):
+        self._open_child_count = value
+        self.update()
+
+    @property
+    def active_child_count(self) -> int:
+        return self._active_child_count
+
+    @active_child_count.setter
+    def active_child_count(self, value: int):
+        self._active_child_count = value
         self.update()
 
     @property
@@ -283,26 +316,25 @@ class BeanNode(QGraphicsObject):
                 PRIORITY_RADIUS, PRIORITY_RADIUS,
             )
 
-        # Child count badge (top-right corner)
-        if self._child_count > 0 and not self._ghost and not self._muted:
-            badge_font = QFont("system-ui", 8)
-            badge_fm = QFontMetrics(badge_font)
-            badge_text = str(self._child_count)
-            text_width = badge_fm.horizontalAdvance(badge_text)
-            badge_w = max(text_width + 8, badge_fm.height() + 4)
-            badge_h = badge_fm.height() + 2
-            badge_x = w - badge_w - 4
-            badge_y = 4
-            badge_color = QColor(255, 255, 255, 64)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(badge_color)
-            painter.drawRoundedRect(QRectF(badge_x, badge_y, badge_w, badge_h), 3, 3)
-            painter.setPen(QColor(255, 255, 255, 200))
-            painter.setFont(badge_font)
+        # Child count indicator (below title, in extra row)
+        if self._child_count > 0 and not self._ghost:
+            child_font = QFont("system-ui", 8)
+            parts = []
+            if self._active_child_count > 0:
+                parts.append(f"{self._active_child_count} active")
+            if self._open_child_count > 0:
+                parts.append(f"{self._open_child_count} open")
+            closed = self._child_count - self._open_child_count - self._active_child_count
+            if closed > 0:
+                parts.append(f"{closed} closed")
+            child_text = f"\u25B8 {self._child_count}: {', '.join(parts)}"
+            tc = QColor(text_color)
+            tc.setAlphaF(0.4)
+            painter.setPen(tc)
+            painter.setFont(child_font)
             painter.drawText(
-                QRectF(badge_x, badge_y, badge_w, badge_h),
-                Qt.AlignmentFlag.AlignCenter,
-                badge_text,
+                QPointF(NODE_PADDING_H, h - 5),
+                child_text,
             )
 
     def hoverEnterEvent(self, event):

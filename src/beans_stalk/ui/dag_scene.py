@@ -189,11 +189,17 @@ class DagScene(QGraphicsScene):
         except Exception:
             ready_ids = set()
 
-        # Compute child counts
+        # Compute child counts by status
         child_counts: dict[str, int] = {}
+        open_child_counts: dict[str, int] = {}
+        active_child_counts: dict[str, int] = {}
         for bean in beans:
             if bean.parent_id is not None:
                 child_counts[bean.parent_id] = child_counts.get(bean.parent_id, 0) + 1
+                if bean.status == "open":
+                    open_child_counts[bean.parent_id] = open_child_counts.get(bean.parent_id, 0) + 1
+                elif bean.status == "in_progress":
+                    active_child_counts[bean.parent_id] = active_child_counts.get(bean.parent_id, 0) + 1
 
         # Remove old nodes
         for bean_id in list(self._nodes.keys()):
@@ -215,14 +221,14 @@ class DagScene(QGraphicsScene):
                 self.addItem(node)
 
             node.ghost = (bean_id in ghost_ids)
-            node.ready = (bean_id in ready_ids)
+            node.ready = (bean_id in ready_ids and not muted)
             node.child_count = child_counts.get(bean_id, 0)
+            node.open_child_count = open_child_counts.get(bean_id, 0)
+            node.active_child_count = active_child_counts.get(bean_id, 0)
             node.pulsing = (
                 (bean.status == "in_progress" and bean.assignee is not None)
                 or bean_id in active_ancestors
             )
-            node.ready = (bean_id in ready_ids and not muted)
-            node.child_count = child_counts.get(bean_id, 0)
 
             if bean_id in new_positions:
                 target = QPointF(*new_positions[bean_id])
