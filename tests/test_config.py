@@ -83,6 +83,18 @@ class TestStalkConfig:
         assert reloaded.viewports["root"]["scale"] == 1.5
         assert reloaded.viewports["bean-abc"]["scale"] == 0.8
 
+    def test_layout_direction_default(self, tmp_path):
+        config = StalkConfig()
+        assert config.layout_direction == "TB"
+
+    def test_layout_direction_persists(self, tmp_path):
+        beans_dir = tmp_path / ".beans"
+        beans_dir.mkdir()
+        config = StalkConfig(layout_direction="LR")
+        config.save(beans_dir)
+        loaded = StalkConfig.load(beans_dir)
+        assert loaded.layout_direction == "LR"
+
     def test_get_color_for_none_assignee(self):
         config = StalkConfig(colors={})
         color = config.get_color(None)

@@ -30,6 +30,7 @@ class StalkConfig:
     fade_minutes: int = 5
     poll_interval_seconds: int = 2
     layout_algorithm: str = "sugiyama"
+    layout_direction: str = "TB"
     colors: dict[str, str] = field(default_factory=dict)
     viewports: dict[str, dict[str, float]] = field(default_factory=dict)
     window_geometry: dict[str, int] = field(default_factory=dict)
@@ -45,6 +46,7 @@ class StalkConfig:
             fade_minutes=data.get("fade_minutes", 5),
             poll_interval_seconds=data.get("poll_interval_seconds", 2),
             layout_algorithm=data.get("layout_algorithm", "sugiyama"),
+            layout_direction=data.get("layout_direction", "TB"),
             colors=dict(data.get("colors", {})),
             viewports={k: dict(v) for k, v in data.get("viewports", {}).items()},
             window_geometry=dict(data.get("window_geometry", {})),
@@ -56,6 +58,7 @@ class StalkConfig:
             "fade_minutes": self.fade_minutes,
             "poll_interval_seconds": self.poll_interval_seconds,
             "layout_algorithm": self.layout_algorithm,
+            "layout_direction": self.layout_direction,
             "colors": self.colors,
             "viewports": self.viewports,
             "window_geometry": self.window_geometry,
