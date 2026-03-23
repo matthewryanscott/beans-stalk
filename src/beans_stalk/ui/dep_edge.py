@@ -31,23 +31,42 @@ class DepEdge(QGraphicsPathItem):
 
     def update_path(self, from_pos: QPointF, from_size: tuple[float, float],
                     to_pos: QPointF, to_size: tuple[float, float],
-                    from_port_frac: float = 0.5, to_port_frac: float = 0.5):
+                    from_port_frac: float = 0.5, to_port_frac: float = 0.5,
+                    direction: str = "TB"):
         """Update bezier path with distributed attachment points.
 
-        port_frac: 0.0 = left edge, 0.5 = center, 1.0 = right edge of node.
+        direction: "TB" (top-to-bottom) or "LR" (left-to-right).
+        port_frac: In TB mode, distributes along node width (left-to-right).
+                   In LR mode, distributes along node height (top-to-bottom).
         """
         from_w, from_h = from_size
-        to_w, _ = to_size
-        # Inset ports slightly from edges for visual margin
-        from_margin = min(8, from_w * 0.1)
-        to_margin = min(8, to_w * 0.1)
-        from_x = from_pos.x() + from_margin + (from_w - 2 * from_margin) * from_port_frac
-        to_x = to_pos.x() + to_margin + (to_w - 2 * to_margin) * to_port_frac
-        start = QPointF(from_x, from_pos.y() + from_h)
-        end = QPointF(to_x, to_pos.y())
-        dy = abs(end.y() - start.y()) / 2
-        ctrl1 = QPointF(start.x(), start.y() + dy)
-        ctrl2 = QPointF(end.x(), end.y() - dy)
+        to_w, to_h = to_size
+
+        if direction == "LR":
+            # LR: edges exit right side of source, enter left side of target
+            # port_frac distributes along node height
+            from_margin = min(8, from_h * 0.1)
+            to_margin = min(8, to_h * 0.1)
+            from_y = from_pos.y() + from_margin + (from_h - 2 * from_margin) * from_port_frac
+            to_y = to_pos.y() + to_margin + (to_h - 2 * to_margin) * to_port_frac
+            start = QPointF(from_pos.x() + from_w, from_y)
+            end = QPointF(to_pos.x(), to_y)
+            dx = abs(end.x() - start.x()) / 2
+            ctrl1 = QPointF(start.x() + dx, start.y())
+            ctrl2 = QPointF(end.x() - dx, end.y())
+        else:
+            # TB: edges exit bottom of source, enter top of target
+            # port_frac distributes along node width
+            from_margin = min(8, from_w * 0.1)
+            to_margin = min(8, to_w * 0.1)
+            from_x = from_pos.x() + from_margin + (from_w - 2 * from_margin) * from_port_frac
+            to_x = to_pos.x() + to_margin + (to_w - 2 * to_margin) * to_port_frac
+            start = QPointF(from_x, from_pos.y() + from_h)
+            end = QPointF(to_x, to_pos.y())
+            dy = abs(end.y() - start.y()) / 2
+            ctrl1 = QPointF(start.x(), start.y() + dy)
+            ctrl2 = QPointF(end.x(), end.y() - dy)
+
         path = QPainterPath(start)
         path.cubicTo(ctrl1, ctrl2, end)
         self.setPath(path)
