@@ -58,11 +58,14 @@ class MainWindow(QMainWindow):
 
         self._breadcrumb = BreadcrumbBar()
         self._breadcrumb.set_layout_algorithm(self._config.layout_algorithm)
+        self._breadcrumb.set_direction(self._config.layout_direction)
         self._breadcrumb.layout_changed.connect(self._on_layout_changed)
+        self._breadcrumb.direction_changed.connect(self._on_direction_changed)
         left_layout.addWidget(self._breadcrumb)
 
         self._scene = DagScene(self._config, store=self._store)
         self._scene.layout_algorithm = self._config.layout_algorithm
+        self._scene.direction = self._config.layout_direction
         self._view = DagView(self._scene)
         left_layout.addWidget(self._view)
 
@@ -406,6 +409,14 @@ class MainWindow(QMainWindow):
         self._config.layout_algorithm = key
         self._config.save(self._beans_dir)
         self._scene.layout_algorithm = key
+        self._scene.update_snapshot(self._beans, self._deps)
+        self._view.update_scene_rect()
+
+    @Slot(str)
+    def _on_direction_changed(self, key: str):
+        self._config.layout_direction = key
+        self._config.save(self._beans_dir)
+        self._scene.direction = key
         self._scene.update_snapshot(self._beans, self._deps)
         self._view.update_scene_rect()
 

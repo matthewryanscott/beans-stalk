@@ -126,6 +126,18 @@ class BreadcrumbBar(QWidget):
         if key:
             self.layout_changed.emit(key)
 
+    def _on_direction_changed(self, index: int):
+        key = self._direction_combo.itemData(index)
+        if key:
+            self.direction_changed.emit(key)
+
+    def set_direction(self, key: str):
+        index = self._direction_combo.findData(key)
+        if index >= 0:
+            self._direction_combo.blockSignals(True)
+            self._direction_combo.setCurrentIndex(index)
+            self._direction_combo.blockSignals(False)
+
     def set_layout_algorithm(self, key: str):
         index = self._layout_combo.findData(key)
         if index >= 0:
