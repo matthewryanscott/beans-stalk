@@ -11,6 +11,7 @@ def compute(
     graph: nx.DiGraph,
     visible_ids: set[str],
     node_sizes: dict[str, tuple[float, float]] | None = None,
+    direction: str = "TB",
 ) -> dict[str, tuple[float, float]]:
     """Compute layout by delegating to Graphviz dot engine."""
     if not visible_ids:
@@ -24,6 +25,8 @@ def compute(
     default_size = (140.0, 30.0)
 
     ag = pgv.AGraph(directed=True)
+    if direction == "LR":
+        ag.graph_attr["rankdir"] = "LR"
     for node in subgraph.nodes():
         w_px, h_px = sizes.get(node, default_size)
         # Graphviz uses inches; 72 points per inch

@@ -93,6 +93,71 @@ class TestSugiyamaCompactProvider:
         assert len(pos_cmp) == 3
 
 
+class TestDirectionLR:
+    """All providers must accept direction='LR' and swap axes."""
+
+    def _chain_graph(self):
+        beans = [_bean("bean-a", "A"), _bean("bean-b", "B"), _bean("bean-c", "C")]
+        deps = [_dep("bean-a", "bean-b"), _dep("bean-b", "bean-c")]
+        return build_dag(beans, deps), {"bean-a", "bean-b", "bean-c"}
+
+    # -- Sugiyama --
+
+    def test_sugiyama_tb_flows_downward(self):
+        g, vis = self._chain_graph()
+        pos = get_provider("sugiyama").compute(g, vis, direction="TB")
+        # A above B above C  (smaller y = higher on screen)
+        assert pos["bean-a"][1] < pos["bean-b"][1] < pos["bean-c"][1]
+
+    def test_sugiyama_lr_flows_rightward(self):
+        g, vis = self._chain_graph()
+        pos = get_provider("sugiyama").compute(g, vis, direction="LR")
+        # A left of B left of C  (smaller x = further left)
+        assert pos["bean-a"][0] < pos["bean-b"][0] < pos["bean-c"][0]
+
+    def test_sugiyama_lr_single_component(self):
+        """Ensure LR works even for single-component graphs (no early return)."""
+        beans = [_bean("bean-x", "X"), _bean("bean-y", "Y")]
+        deps = [_dep("bean-x", "bean-y")]
+        g = build_dag(beans, deps)
+        pos = get_provider("sugiyama").compute(g, {"bean-x", "bean-y"}, direction="LR")
+        assert pos["bean-x"][0] < pos["bean-y"][0]
+
+    # -- Sugiyama Compact --
+
+    def test_sugiyama_compact_tb_flows_downward(self):
+        g, vis = self._chain_graph()
+        pos = get_provider("sugiyama_compact").compute(g, vis, direction="TB")
+        assert pos["bean-a"][1] < pos["bean-b"][1] < pos["bean-c"][1]
+
+    def test_sugiyama_compact_lr_flows_rightward(self):
+        g, vis = self._chain_graph()
+        pos = get_provider("sugiyama_compact").compute(g, vis, direction="LR")
+        assert pos["bean-a"][0] < pos["bean-b"][0] < pos["bean-c"][0]
+
+    def test_sugiyama_compact_lr_single_component(self):
+        beans = [_bean("bean-x", "X"), _bean("bean-y", "Y")]
+        deps = [_dep("bean-x", "bean-y")]
+        g = build_dag(beans, deps)
+        pos = get_provider("sugiyama_compact").compute(g, {"bean-x", "bean-y"}, direction="LR")
+        assert pos["bean-x"][0] < pos["bean-y"][0]
+
+    # -- Graphviz dot --
+
+    def test_graphviz_dot_lr_flows_rightward(self):
+        pytest.importorskip("pygraphviz")
+        g, vis = self._chain_graph()
+        pos = get_provider("graphviz_dot").compute(g, vis, direction="LR")
+        assert pos["bean-a"][0] < pos["bean-b"][0] < pos["bean-c"][0]
+
+    def test_graphviz_dot_tb_default(self):
+        pytest.importorskip("pygraphviz")
+        g, vis = self._chain_graph()
+        pos = get_provider("graphviz_dot").compute(g, vis)
+        # Default is TB: A above B above C
+        assert pos["bean-a"][1] < pos["bean-b"][1] < pos["bean-c"][1]
+
+
 class TestGraphvizDotProvider:
     def test_registered_if_pygraphviz_available(self):
         pytest.importorskip("pygraphviz")
