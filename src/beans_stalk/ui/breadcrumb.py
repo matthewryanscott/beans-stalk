@@ -9,6 +9,7 @@ class BreadcrumbBar(QWidget):
 
     navigate_to = Signal(object)  # str (bean ID) or None (root)
     layout_changed = Signal(str)
+    direction_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -17,6 +18,16 @@ class BreadcrumbBar(QWidget):
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(4, 2, 4, 2)
         self._layout.setSpacing(2)
+
+        # Direction dropdown — created once, persists across _rebuild calls
+        self._direction_combo = QComboBox()
+        self._direction_combo.setStyleSheet(
+            "QComboBox { border: 1px solid #555; color: #ccc; background: #333; "
+            "font-size: 11px; padding: 1px 4px; min-width: 80px; }"
+        )
+        self._direction_combo.addItem("Top-Down", "TB")
+        self._direction_combo.addItem("Left-Right", "LR")
+        self._direction_combo.currentIndexChanged.connect(self._on_direction_changed)
 
         # Layout algorithm dropdown — created once, persists across _rebuild calls
         self._layout_combo = QComboBox()
@@ -63,7 +74,7 @@ class BreadcrumbBar(QWidget):
         while self._layout.count():
             item = self._layout.takeAt(0)
             w = item.widget()
-            if w and w is not self._layout_combo:
+            if w and w is not self._layout_combo and w is not self._direction_combo:
                 w.deleteLater()
         self._buttons.clear()
 
@@ -80,6 +91,7 @@ class BreadcrumbBar(QWidget):
             self._layout.addWidget(btn)
 
         self._layout.addStretch()
+        self._layout.addWidget(self._direction_combo)
         self._layout.addWidget(self._layout_combo)
 
         if self._buttons:
@@ -96,6 +108,18 @@ class BreadcrumbBar(QWidget):
         )
         btn.clicked.connect(lambda checked, pid=parent_id: self.pop_to(pid))
         return btn
+
+    def _on_direction_changed(self, index: int):
+        key = self._direction_combo.itemData(index)
+        if key:
+            self.direction_changed.emit(key)
+
+    def set_direction(self, key: str):
+        index = self._direction_combo.findData(key)
+        if index >= 0:
+            self._direction_combo.blockSignals(True)
+            self._direction_combo.setCurrentIndex(index)
+            self._direction_combo.blockSignals(False)
 
     def _on_layout_changed(self, index: int):
         key = self._layout_combo.itemData(index)

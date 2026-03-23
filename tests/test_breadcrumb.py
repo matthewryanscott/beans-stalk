@@ -104,3 +104,19 @@ class TestBreadcrumbBar:
         qtbot.addWidget(bar)
         bar.set_layout_algorithm("sugiyama_compact")
         assert bar._layout_combo.currentData() == "sugiyama_compact"
+
+    def test_direction_changed_signal(self, qtbot):
+        bar = BreadcrumbBar()
+        qtbot.addWidget(bar)
+        # Default is "TB" (Top-Down), switching to index 1 should emit "LR"
+        with qtbot.waitSignal(bar.direction_changed, timeout=1000) as blocker:
+            bar._direction_combo.setCurrentIndex(1)
+        assert blocker.args == ["LR"]
+
+    def test_set_direction(self, qtbot):
+        bar = BreadcrumbBar()
+        qtbot.addWidget(bar)
+        bar.set_direction("LR")
+        assert bar._direction_combo.currentData() == "LR"
+        bar.set_direction("TB")
+        assert bar._direction_combo.currentData() == "TB"
