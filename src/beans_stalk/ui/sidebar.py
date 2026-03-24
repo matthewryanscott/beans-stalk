@@ -579,24 +579,10 @@ class Sidebar(QWidget):
         for dep in blocks:
             target = bean_map.get(dep.to_id)
             title = target.title if target else dep.to_id
-            row = QHBoxLayout()
-            link = QPushButton(title)
-            link.setFlat(True)
-            link.setStyleSheet("text-align: left; color: #6cb4ee; padding: 1px 0;")
-            link.setCursor(Qt.CursorShape.PointingHandCursor)
             tid = dep.to_id
-            link.clicked.connect(lambda checked=False, bid=tid: self.navigate_to_bean.emit(bid))
-            row.addWidget(link, 1)
-            remove_btn = QPushButton("×")
-            remove_btn.setFixedSize(20, 20)
-            fid, tid2 = dep.from_id, dep.to_id
-            remove_btn.clicked.connect(
-                lambda checked=False, f=fid, t=tid2: self.remove_dep_requested.emit(f, t)
+            self._blocks_list.addWidget(
+                self._make_dep_row(title, tid, dep.from_id, dep.to_id)
             )
-            row.addWidget(remove_btn)
-            container = QWidget()
-            container.setLayout(row)
-            self._blocks_list.addWidget(container)
         self._blocks_group.setVisible(True)
 
         # This bean is blocked by others (to_id == bean.id)
@@ -605,25 +591,30 @@ class Sidebar(QWidget):
         for dep in blocked_by:
             source = bean_map.get(dep.from_id)
             title = source.title if source else dep.from_id
-            row = QHBoxLayout()
-            link = QPushButton(title)
-            link.setFlat(True)
-            link.setStyleSheet("text-align: left; color: #6cb4ee; padding: 1px 0;")
-            link.setCursor(Qt.CursorShape.PointingHandCursor)
             sid = dep.from_id
-            link.clicked.connect(lambda checked=False, bid=sid: self.navigate_to_bean.emit(bid))
-            row.addWidget(link, 1)
-            remove_btn = QPushButton("×")
-            remove_btn.setFixedSize(20, 20)
-            fid, tid = dep.from_id, dep.to_id
-            remove_btn.clicked.connect(
-                lambda checked=False, f=fid, t=tid: self.remove_dep_requested.emit(f, t)
+            self._blocked_by_list.addWidget(
+                self._make_dep_row(title, sid, dep.from_id, dep.to_id)
             )
-            row.addWidget(remove_btn)
-            container = QWidget()
-            container.setLayout(row)
-            self._blocked_by_list.addWidget(container)
         self._blocked_by_group.setVisible(True)
+
+    def _make_dep_row(self, title: str, navigate_id: str, from_id: str, to_id: str) -> QWidget:
+        """Create a row with a clickable wrapping label and a remove button."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        link = QLabel(f"<a href='#' style='color: #6cb4ee; text-decoration: none;'>{title}</a>")
+        link.setWordWrap(True)
+        link.setCursor(Qt.CursorShape.PointingHandCursor)
+        link.linkActivated.connect(lambda _href, bid=navigate_id: self.navigate_to_bean.emit(bid))
+        row.addWidget(link, 1)
+        remove_btn = QPushButton("×")
+        remove_btn.setFixedSize(20, 20)
+        remove_btn.clicked.connect(
+            lambda checked=False, f=from_id, t=to_id: self.remove_dep_requested.emit(f, t)
+        )
+        row.addWidget(remove_btn)
+        container = QWidget()
+        container.setLayout(row)
+        return container
 
     def _reachable_from(self, start_id: str, deps: list[Dep]) -> set[str]:
         """Return all bean IDs reachable from start_id following dep edges."""
