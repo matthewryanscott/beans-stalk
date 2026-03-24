@@ -116,7 +116,9 @@ class DataWatcher(QObject):
         return row[0]
 
     def _trigger_debounced_poll(self):
-        QTimer.singleShot(0, self._debounce_timer.start)
+        timer = self._debounce_timer
+        if timer is not None:
+            QTimer.singleShot(0, timer.start)
 
     def _check_for_changes(self):
         if self._store is None:
