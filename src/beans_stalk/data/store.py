@@ -3,7 +3,30 @@ from pathlib import Path
 
 from beans import api
 from beans.models import Bean, Dep
-from beans.store import Store
+from beans.store import BeanStore, DepStore, JournalStore, Store, migrate
+
+
+def _open_store(db_path: str) -> Store:
+    """Open an existing beans DB without executescript(SCHEMA).
+
+    Store.__init__ always runs executescript(SCHEMA) which requires an
+    exclusive lock to set journal_mode=WAL.  On virtiofs mounts the lock
+    handshake can fail with "disk I/O error".  Since the DB already exists
+    we just set the PRAGMAs individually with execute() (which respects
+    busy_timeout) and wire up the sub-stores directly.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    migrate(conn)
+    store = object.__new__(Store)
+    store.conn = conn
+    store.bean = BeanStore(conn)
+    store.dep = DepStore(conn)
+    store.journal = JournalStore(conn)
+    store.dry_run = False
+    return store
 
 
 class StalkStore:
@@ -11,9 +34,7 @@ class StalkStore:
 
     def __init__(self, db_path: Path | str):
         self.db_path = Path(db_path)
-        conn = sqlite3.connect(str(self.db_path))
-        conn.execute("PRAGMA busy_timeout=5000")
-        self.store = Store(conn)
+        self.store = _open_store(str(self.db_path))
 
     def close(self):
         self.store.close()
