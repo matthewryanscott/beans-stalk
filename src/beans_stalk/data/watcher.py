@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -5,6 +6,8 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from beans_stalk.data.store import StalkStore
+
+log = logging.getLogger(__name__)
 
 # Shared observer: one per watched directory, refcounted across DataWatcher instances.
 # Key: resolved directory path. Value: (Observer, handler_count).
@@ -128,8 +131,17 @@ class DataWatcher(QObject):
     def _check_for_changes(self):
         if self._store is None:
             return
-        current_version = self._pragma_data_version()
-        if current_version != self._last_data_version:
-            self._last_data_version = current_version
-            beans, deps = self._store.load_snapshot()
-            self.snapshot_changed.emit(beans, deps)
+        try:
+            current_version = self._pragma_data_version()
+            if current_version != self._last_data_version:
+                self._last_data_version = current_version
+                beans, deps = self._store.load_snapshot()
+                self.snapshot_changed.emit(beans, deps)
+        except Exception:
+            log.exception("poll failed, reconnecting to %s", self._db_path)
+            try:
+                self._store.close()
+            except Exception:
+                pass
+            self._store = StalkStore(self._db_path)
+            self._last_data_version = None
