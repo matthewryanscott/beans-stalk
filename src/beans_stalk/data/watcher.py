@@ -111,7 +111,12 @@ class DataWatcher(QObject):
             self._store = None
 
     def _pragma_data_version(self) -> int:
-        """Use PRAGMA data_version to detect cross-connection changes."""
+        """Use PRAGMA data_version to detect cross-connection changes.
+
+        Commit first to close any implicit read transaction — SQLite docs
+        say data_version behaviour is undefined inside an open transaction.
+        """
+        self._store.store.conn.commit()
         row = self._store.store.conn.execute("PRAGMA data_version").fetchone()
         return row[0]
 
