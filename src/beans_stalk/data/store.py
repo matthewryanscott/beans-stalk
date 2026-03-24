@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from beans import api
@@ -10,8 +11,9 @@ class StalkStore:
 
     def __init__(self, db_path: Path | str):
         self.db_path = Path(db_path)
-        self.store = Store.from_path(str(self.db_path))
-        self.store.conn.execute("PRAGMA busy_timeout=5000")
+        conn = sqlite3.connect(str(self.db_path))
+        conn.execute("PRAGMA busy_timeout=5000")
+        self.store = Store(conn)
 
     def close(self):
         self.store.close()
