@@ -152,17 +152,31 @@ class DataWatcher(QObject):
         if timer is not None:
             QTimer.singleShot(0, timer.start)
 
+    def _reconnect(self):
+        """Close the current store and open a fresh connection."""
+        if self._store is not None:
+            try:
+                self._store.close()
+            except Exception:
+                pass
+            self._store = None
+        self._store = StalkStore(self._db_path)
+        self._last_data_version = None
+
     def _check_for_changes(self):
+        # Attempt reconnect if store is down (e.g. previous reconnect failed)
         if self._store is None:
-            return
+            try:
+                self._reconnect()
+            except Exception:
+                return  # try again next poll cycle
+
         try:
             # Reconnect when WAL file stats change — a fresh connection
             # is needed to see writes that bypassed SQLite's shared-memory
             # protocol (e.g. virtiofs mounts across a VM boundary).
             if self._files_changed():
-                self._store.close()
-                self._store = StalkStore(self._db_path)
-                self._last_data_version = None
+                self._reconnect()
 
             current_version = self._pragma_data_version()
             if current_version != self._last_data_version:
@@ -172,8 +186,7 @@ class DataWatcher(QObject):
         except Exception:
             log.exception("poll failed, reconnecting to %s", self._db_path)
             try:
-                self._store.close()
+                self._reconnect()
             except Exception:
-                pass
-            self._store = StalkStore(self._db_path)
-            self._last_data_version = None
+                log.warning("reconnect also failed, will retry next poll")
+                self._store = None
