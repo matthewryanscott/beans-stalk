@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -78,9 +79,11 @@ class DataWatcher(QObject):
         self._poll_timer: QTimer | None = None
         self._last_data_version: int | None = None
         self._debounce_timer: QTimer | None = None
+        self._last_wal_stat: tuple[float, int] | None = None  # (mtime, size)
 
     def start(self):
         self._store = StalkStore(self._db_path)
+        self._last_wal_stat = self._wal_stat()
         self._last_data_version = self._pragma_data_version()
         beans, deps = self._store.load_snapshot()
         self.snapshot_changed.emit(beans, deps)
@@ -113,6 +116,27 @@ class DataWatcher(QObject):
             self._store.close()
             self._store = None
 
+    def _wal_stat(self) -> tuple[float, int] | None:
+        """Return (mtime, size) of the WAL file, or None if absent."""
+        wal = self._db_path.with_suffix(self._db_path.suffix + "-wal")
+        try:
+            st = os.stat(wal)
+            return (st.st_mtime, st.st_size)
+        except FileNotFoundError:
+            return None
+
+    def _files_changed(self) -> bool:
+        """Detect on-disk changes via WAL file stat.
+
+        This catches writes from processes that bypass SQLite's shared
+        memory protocol (e.g. virtiofs-mounted databases written by a VM).
+        """
+        current = self._wal_stat()
+        if current != self._last_wal_stat:
+            self._last_wal_stat = current
+            return True
+        return False
+
     def _pragma_data_version(self) -> int:
         """Use PRAGMA data_version to detect cross-connection changes.
 
@@ -132,6 +156,14 @@ class DataWatcher(QObject):
         if self._store is None:
             return
         try:
+            # Reconnect when WAL file stats change — a fresh connection
+            # is needed to see writes that bypassed SQLite's shared-memory
+            # protocol (e.g. virtiofs mounts across a VM boundary).
+            if self._files_changed():
+                self._store.close()
+                self._store = StalkStore(self._db_path)
+                self._last_data_version = None
+
             current_version = self._pragma_data_version()
             if current_version != self._last_data_version:
                 self._last_data_version = current_version
