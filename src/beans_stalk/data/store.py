@@ -3,7 +3,7 @@ from pathlib import Path
 
 from beans import api
 from beans.models import Bean, Dep
-from beans.store import BeanStore, DepStore, JournalStore, Store, migrate
+from beans.store import BeanStore, DepStore, JournalStore, Store
 
 
 def _open_store(db_path: str) -> Store:
@@ -19,7 +19,6 @@ def _open_store(db_path: str) -> Store:
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
-    migrate(conn)
     store = object.__new__(Store)
     store.conn = conn
     store.bean = BeanStore(conn)
@@ -43,10 +42,6 @@ class StalkStore:
         beans = self.store.list()
         deps = self.store.list_all_deps()
         return beans, deps
-
-    def data_version(self) -> int:
-        row = self.store.conn.execute("SELECT total_changes()").fetchone()
-        return row[0]
 
     def create_bean(self, title: str, **fields) -> Bean:
         return api.create_bean(self.store, title, **fields)

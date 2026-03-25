@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -61,7 +60,14 @@ def _release_observer(watch_dir: str):
 
 
 class DataWatcher(QObject):
-    """Hybrid watchdog + poll change detector. All Store access on main thread."""
+    """Polls for DB changes using fresh connections.
+
+    Uses a fresh SQLite connection each poll cycle so it always sees the
+    current on-disk state — critical for virtiofs mounts where persistent
+    connections, PRAGMA data_version, and shared-memory files are unreliable.
+    Watchdog FSEvents provide opportunistic fast-path notification for local
+    writes.
+    """
 
     snapshot_changed = Signal(list, list)
 
@@ -74,18 +80,14 @@ class DataWatcher(QObject):
         super().__init__(parent)
         self._db_path = Path(db_path)
         self._poll_interval_ms = int(poll_interval_seconds * 1000)
-        self._store: StalkStore | None = None
         self._watch_dir: str | None = None
         self._poll_timer: QTimer | None = None
-        self._last_data_version: int | None = None
         self._debounce_timer: QTimer | None = None
-        self._last_wal_stat: tuple[float, int] | None = None  # (mtime, size)
+        self._last_snapshot: tuple[list, list] | None = None
 
     def start(self):
-        self._store = StalkStore(self._db_path)
-        self._last_wal_stat = self._wal_stat()
-        self._last_data_version = self._pragma_data_version()
-        beans, deps = self._store.load_snapshot()
+        beans, deps = self._load_fresh()
+        self._last_snapshot = (beans, deps)
         self.snapshot_changed.emit(beans, deps)
 
         self._debounce_timer = QTimer(self)
@@ -112,81 +114,27 @@ class DataWatcher(QObject):
         if self._watch_dir is not None:
             _release_observer(self._watch_dir)
             self._watch_dir = None
-        if self._store is not None:
-            self._store.close()
-            self._store = None
 
-    def _wal_stat(self) -> tuple[float, int] | None:
-        """Return (mtime, size) of the WAL file, or None if absent."""
-        wal = self._db_path.with_suffix(self._db_path.suffix + "-wal")
+    def _load_fresh(self):
+        """Open a fresh connection, read snapshot, close connection."""
+        store = StalkStore(self._db_path)
         try:
-            st = os.stat(wal)
-            return (st.st_mtime, st.st_size)
-        except FileNotFoundError:
-            return None
-
-    def _files_changed(self) -> bool:
-        """Detect on-disk changes via WAL file stat.
-
-        This catches writes from processes that bypass SQLite's shared
-        memory protocol (e.g. virtiofs-mounted databases written by a VM).
-        """
-        current = self._wal_stat()
-        if current != self._last_wal_stat:
-            self._last_wal_stat = current
-            return True
-        return False
-
-    def _pragma_data_version(self) -> int:
-        """Use PRAGMA data_version to detect cross-connection changes.
-
-        Commit first to close any implicit read transaction — SQLite docs
-        say data_version behaviour is undefined inside an open transaction.
-        """
-        self._store.store.conn.commit()
-        row = self._store.store.conn.execute("PRAGMA data_version").fetchone()
-        return row[0]
+            return store.load_snapshot()
+        finally:
+            store.close()
 
     def _trigger_debounced_poll(self):
         timer = self._debounce_timer
         if timer is not None:
             QTimer.singleShot(0, timer.start)
 
-    def _reconnect(self):
-        """Close the current store and open a fresh connection."""
-        if self._store is not None:
-            try:
-                self._store.close()
-            except Exception:
-                pass
-            self._store = None
-        self._store = StalkStore(self._db_path)
-        self._last_data_version = None
-
     def _check_for_changes(self):
-        # Attempt reconnect if store is down (e.g. previous reconnect failed)
-        if self._store is None:
-            try:
-                self._reconnect()
-            except Exception:
-                return  # try again next poll cycle
-
         try:
-            # Reconnect when WAL file stats change — a fresh connection
-            # is needed to see writes that bypassed SQLite's shared-memory
-            # protocol (e.g. virtiofs mounts across a VM boundary).
-            if self._files_changed():
-                self._reconnect()
-
-            current_version = self._pragma_data_version()
-            if current_version != self._last_data_version:
-                self._last_data_version = current_version
-                beans, deps = self._store.load_snapshot()
-                self.snapshot_changed.emit(beans, deps)
+            beans, deps = self._load_fresh()
         except Exception:
-            log.exception("poll failed, reconnecting to %s", self._db_path)
-            try:
-                self._reconnect()
-            except Exception:
-                log.warning("reconnect also failed, will retry next poll")
-                self._store = None
+            log.exception("poll failed for %s, will retry next cycle", self._db_path)
+            return
+
+        if (beans, deps) != self._last_snapshot:
+            self._last_snapshot = (beans, deps)
+            self.snapshot_changed.emit(beans, deps)
