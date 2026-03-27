@@ -1,5 +1,7 @@
 import socket
+import subprocess
 import threading
+import time as _time
 from pathlib import Path
 from typing import Callable
 
@@ -75,6 +77,49 @@ class IpcServer:
                 break
 
 
+def find_app_bundle(reference: Path | None = None) -> Path | None:
+    """Locate Beans Stalk.app, checking paths in priority order."""
+    if reference is None:
+        reference = Path(__file__)
+    # 1. Relative to source tree: <project>/dist/Beans Stalk.app
+    project_root = reference.resolve().parent.parent.parent
+    candidate = project_root / "dist" / "Beans Stalk.app"
+    if candidate.is_dir():
+        return candidate
+    # 2. ~/Applications
+    candidate = Path.home() / "Applications" / "Beans Stalk.app"
+    if candidate.is_dir():
+        return candidate
+    # 3. /Applications
+    candidate = Path("/Applications/Beans Stalk.app")
+    if candidate.is_dir():
+        return candidate
+    return None
+
+
+def launch_and_wait(app_path: Path, timeout: float = 10.0):
+    """Launch the .app and poll until the IPC socket is ready."""
+    subprocess.run(["open", str(app_path)])
+    deadline = _time.monotonic() + timeout
+    while _time.monotonic() < deadline:
+        if SOCKET_PATH.exists():
+            # Verify the socket is connectable, not just a stale file
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                sock.connect(str(SOCKET_PATH))
+                sock.close()
+                return
+            except (ConnectionRefusedError, FileNotFoundError):
+                pass
+            finally:
+                sock.close()
+        _time.sleep(0.1)
+    raise RuntimeError(
+        f"Beans Stalk.app did not start within {timeout}s. "
+        f"Socket not found at {SOCKET_PATH}"
+    )
+
+
 @app.command()
 def main(
     beans_dir: str = typer.Argument(None, help="Path to .beans directory or parent"),
@@ -93,9 +138,24 @@ def main(
         else:
             resolved = str(find_beans_dir(start=beans_dir))
 
+    # Try sending to an already-running instance
     if try_send_to_running_instance(resolved):
         raise SystemExit(0)
 
-    from beans_stalk.app import run_app
+    # Server not running — find and launch the .app
+    app_path = find_app_bundle()
+    if app_path is None:
+        typer.echo("Error: Could not find Beans Stalk.app", err=True)
+        typer.echo(
+            "Run scripts/build_app.sh to create it, or copy it to ~/Applications/",
+            err=True,
+        )
+        raise SystemExit(1)
 
-    run_app(resolved)
+    launch_and_wait(app_path)
+
+    if not try_send_to_running_instance(resolved):
+        typer.echo("Error: Failed to connect after launching Beans Stalk.app", err=True)
+        raise SystemExit(1)
+
+    raise SystemExit(0)

@@ -1,8 +1,10 @@
 import os
 import socket
 import tempfile
+import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -57,6 +59,49 @@ class TestIpc:
         assert sock_path.exists()
         server.stop()
         assert not sock_path.exists()
+
+
+class TestCliLaunchesApp:
+    def test_find_app_bundle_relative_to_package(self, tmp_path):
+        """find_app_bundle() finds the .app relative to the source tree."""
+        from beans_stalk.main import find_app_bundle
+
+        # Simulate: <project>/src/beans_stalk/main.py
+        src_dir = tmp_path / "src" / "beans_stalk"
+        src_dir.mkdir(parents=True)
+        fake_main = src_dir / "main.py"
+        fake_main.touch()
+
+        # Simulate: <project>/dist/Beans Stalk.app
+        app_dir = tmp_path / "dist" / "Beans Stalk.app"
+        app_dir.mkdir(parents=True)
+
+        result = find_app_bundle(reference=fake_main)
+        assert result is not None
+        assert result == app_dir
+
+    def test_launch_and_wait_for_server(self, sock_path):
+        """launch_and_wait() opens the .app and polls until socket is ready."""
+        from beans_stalk.main import launch_and_wait
+
+        app_path = Path("/fake/Beans Stalk.app")
+
+        # Start a server in background to simulate the .app coming up
+        server = IpcServer(on_path=lambda p: None)
+
+        def delayed_start():
+            time.sleep(0.3)
+            server.start()
+
+        t = threading.Thread(target=delayed_start)
+        t.start()
+
+        with patch("subprocess.run") as mock_run:
+            launch_and_wait(app_path, timeout=5.0)
+            mock_run.assert_called_once_with(["open", str(app_path)])
+
+        t.join()
+        server.stop()
 
 
 class TestServerMode:
