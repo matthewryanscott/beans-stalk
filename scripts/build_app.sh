@@ -51,8 +51,9 @@ cat > "$CONTENTS/MacOS/beans-stalk" << 'LAUNCHER'
 set -euo pipefail
 
 # Resolve project root from .app location
+# .app is at <project>/dist/Beans Stalk.app, launcher is in Contents/MacOS/
 APP_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-PROJECT_ROOT="$(cd "$APP_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$APP_DIR/../.." && pwd)"
 
 # Activate the uv venv
 PYTHON="$PROJECT_ROOT/.venv/bin/python"
