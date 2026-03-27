@@ -2,12 +2,17 @@ import signal
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
 from beans_stalk.config import StalkConfig
 from beans_stalk.main import IpcServer
 from beans_stalk.ui.main_window import MainWindow
+
+
+class _IpcBridge(QObject):
+    """Thread-safe bridge: emits a signal on the main thread when IPC receives a path."""
+    path_received = Signal(str)
 
 
 class StalkApp:
@@ -16,6 +21,7 @@ class StalkApp:
     def __init__(self, qt_app: QApplication | None = None):
         self._qt_app = qt_app
         self._ipc_server: IpcServer | None = None
+        self._ipc_bridge: _IpcBridge | None = None
         self._windows: dict[str, MainWindow] = {}
         self._extra_windows: list[MainWindow] = []
         self._configs: dict[str, StalkConfig] = {}
@@ -72,6 +78,8 @@ class StalkApp:
 
     def start_server(self):
         """Start IPC server and signal handling. Does not enter event loop."""
+        self._ipc_bridge = _IpcBridge()
+        self._ipc_bridge.path_received.connect(self.open_beans_dir)
         self._ipc_server = IpcServer(on_path=self._on_ipc_path)
         self._ipc_server.start()
 
@@ -101,7 +109,7 @@ class StalkApp:
         sys.exit(self._qt_app.exec())
 
     def _on_ipc_path(self, path: str):
-        QTimer.singleShot(0, lambda: self.open_beans_dir(path))
+        self._ipc_bridge.path_received.emit(path)
 
     def _shutdown(self):
         if self._ipc_server:
