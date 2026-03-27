@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 stalk = "beans_stalk.main:app"
+stalk-server = "beans_stalk.app:run_server"
 
 [dependency-groups]
 dev = [
