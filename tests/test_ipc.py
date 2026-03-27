@@ -57,3 +57,21 @@ class TestIpc:
         assert sock_path.exists()
         server.stop()
         assert not sock_path.exists()
+
+
+class TestServerMode:
+    def test_run_server_starts_ipc_without_window(self, sock_path, qapp):
+        """StalkApp in server mode starts IPC but opens no windows."""
+        from beans_stalk.app import StalkApp
+
+        app = StalkApp(qt_app=qapp)
+        app.start_server()
+        time.sleep(0.1)
+
+        assert sock_path.exists()
+        assert len(app._windows) == 0
+
+        result = try_send_to_running_instance("/some/path")
+        assert result is True
+
+        app.stop_server()

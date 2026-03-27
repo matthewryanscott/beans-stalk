@@ -13,12 +13,13 @@ from beans_stalk.ui.main_window import MainWindow
 class StalkApp:
     """Application lifecycle manager."""
 
-    def __init__(self):
-        self._qt_app: QApplication | None = None
+    def __init__(self, qt_app: QApplication | None = None):
+        self._qt_app = qt_app
         self._ipc_server: IpcServer | None = None
         self._windows: dict[str, MainWindow] = {}
         self._extra_windows: list[MainWindow] = []
         self._configs: dict[str, StalkConfig] = {}
+        self._signal_timer: QTimer | None = None
 
     def _get_config(self, beans_dir: Path) -> StalkConfig:
         """Get or create a shared config for a beans directory."""
@@ -69,25 +70,33 @@ class StalkApp:
         except ValueError:
             pass
 
-    def run(self, initial_beans_dir: str):
-        self._qt_app = QApplication(sys.argv)
-        self._qt_app.setApplicationName("Beans Stalk")
-        self._qt_app.setQuitOnLastWindowClosed(True)
-
+    def start_server(self):
+        """Start IPC server and signal handling. Does not enter event loop."""
         self._ipc_server = IpcServer(on_path=self._on_ipc_path)
         self._ipc_server.start()
 
-        def signal_handler(signum, frame):
-            self._shutdown()
+        signal.signal(signal.SIGINT, lambda *_: self._shutdown())
+        signal.signal(signal.SIGTERM, lambda *_: self._shutdown())
 
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        self._signal_timer = QTimer()
+        self._signal_timer.timeout.connect(lambda: None)
+        self._signal_timer.start(250)
 
-        signal_timer = QTimer()
-        signal_timer.timeout.connect(lambda: None)
-        signal_timer.start(250)
+    def stop_server(self):
+        """Stop the IPC server and clean up."""
+        self._shutdown()
 
-        self.open_beans_dir(initial_beans_dir)
+    def run(self, initial_beans_dir: str | None = None):
+        """Create QApplication, start server, optionally open a window, enter event loop."""
+        if self._qt_app is None:
+            self._qt_app = QApplication(sys.argv)
+        self._qt_app.setApplicationName("Beans Stalk")
+        self._qt_app.setQuitOnLastWindowClosed(initial_beans_dir is not None)
+
+        self.start_server()
+
+        if initial_beans_dir is not None:
+            self.open_beans_dir(initial_beans_dir)
 
         sys.exit(self._qt_app.exec())
 
@@ -109,3 +118,9 @@ def run_app(beans_dir: str):
     """Entry point called from main.py after IPC check."""
     app = StalkApp()
     app.run(beans_dir)
+
+
+def run_server():
+    """Entry point for .app bundle — server mode with no initial window."""
+    app = StalkApp()
+    app.run()
