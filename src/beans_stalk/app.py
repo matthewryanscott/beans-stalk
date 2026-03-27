@@ -124,3 +124,7 @@ def run_server():
     """Entry point for .app bundle — server mode with no initial window."""
     app = StalkApp()
     app.run()
+
+
+if __name__ == "__main__":
+    run_server()
