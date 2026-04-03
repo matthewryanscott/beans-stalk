@@ -21,6 +21,7 @@ class MainWindow(QMainWindow):
                  navigate_to: str | None = None, config: StalkConfig | None = None,
                  parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self._beans_dir = beans_dir
         self._on_open_dir = on_open_dir
         self._on_new_window = on_new_window

@@ -1,6 +1,5 @@
-import os
 import socket
-import tempfile
+import uuid
 import threading
 import time
 from pathlib import Path
@@ -14,10 +13,7 @@ from beans_stalk.main import IpcServer, try_send_to_running_instance, SOCKET_PAT
 @pytest.fixture()
 def sock_path(monkeypatch):
     """Provide a short socket path that fits within AF_UNIX limits."""
-    fd, path = tempfile.mkstemp(suffix=".sock", dir="/tmp")
-    os.close(fd)
-    os.unlink(path)  # we just need the name, not the file
-    p = Path(path)
+    p = Path.cwd() / f".ipc-{uuid.uuid4().hex[:8]}.sock"
     monkeypatch.setattr("beans_stalk.main.SOCKET_PATH", p)
     yield p
     # cleanup
@@ -120,3 +116,29 @@ class TestServerMode:
         assert result is True
 
         app.stop_server()
+
+
+class TestAppWindowLifecycle:
+    def test_can_reopen_same_beans_dir_after_closing_last_window(
+        self, tmp_beans_dir, qapp, qtbot
+    ):
+        from beans_stalk.app import StalkApp
+
+        app = StalkApp(qt_app=qapp)
+        resolved = str(tmp_beans_dir.resolve())
+
+        app.open_beans_dir(resolved)
+        assert resolved in app._windows
+        first = app._windows[resolved]
+        qtbot.addWidget(first)
+        assert first.isVisible()
+
+        first.close()
+        qapp.processEvents()
+
+        app.open_beans_dir(resolved)
+        assert resolved in app._windows
+        second = app._windows[resolved]
+        qtbot.addWidget(second)
+        assert second.isVisible()
+        assert second is not first

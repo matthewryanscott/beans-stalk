@@ -1,62 +1,48 @@
 import logging
+import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 from beans_stalk.data.store import StalkStore
 
 log = logging.getLogger(__name__)
 
-# Shared observer: one per watched directory, refcounted across DataWatcher instances.
-# Key: resolved directory path. Value: (Observer, handler_count).
-_shared_observers: dict[str, tuple[Observer, int]] = {}
-
 
 class _DbFileHandler(FileSystemEventHandler):
     def __init__(self, db_path: Path, trigger_poll: callable):
-        self._db_name = db_path.name
-        self._wal_name = f"{db_path.name}-wal"
+        self._watched_names = {
+            db_path.name,
+            f"{db_path.name}-wal",
+            f"{db_path.name}-shm",
+        }
         self._trigger_poll = trigger_poll
+
+    def _maybe_trigger(self, path: str | None):
+        if path is None:
+            return
+        if Path(path).name in self._watched_names:
+            self._trigger_poll()
 
     def on_modified(self, event):
         if event.is_directory:
             return
-        name = Path(event.src_path).name
-        if name in (self._db_name, self._wal_name):
-            self._trigger_poll()
+        self._maybe_trigger(event.src_path)
 
     def on_created(self, event):
         self.on_modified(event)
 
+    def on_deleted(self, event):
+        self.on_modified(event)
 
-def _acquire_observer(watch_dir: str, handler: FileSystemEventHandler) -> bool:
-    """Schedule a handler on the shared observer for watch_dir. Returns True if successful."""
-    if watch_dir in _shared_observers:
-        observer, count = _shared_observers[watch_dir]
-        observer.schedule(handler, watch_dir, recursive=False)
-        _shared_observers[watch_dir] = (observer, count + 1)
-        return True
-
-    observer = Observer()
-    observer.schedule(handler, watch_dir, recursive=False)
-    observer.start()
-    _shared_observers[watch_dir] = (observer, 1)
-    return True
-
-
-def _release_observer(watch_dir: str):
-    """Decrement refcount for watch_dir's observer; stop it when no handlers remain."""
-    if watch_dir not in _shared_observers:
-        return
-    observer, count = _shared_observers[watch_dir]
-    if count <= 1:
-        observer.stop()
-        observer.join()
-        del _shared_observers[watch_dir]
-    else:
-        _shared_observers[watch_dir] = (observer, count - 1)
+    def on_moved(self, event):
+        if event.is_directory:
+            return
+        self._maybe_trigger(event.src_path)
+        self._maybe_trigger(event.dest_path)
 
 
 class DataWatcher(QObject):
@@ -70,6 +56,7 @@ class DataWatcher(QObject):
     """
 
     snapshot_changed = Signal(list, list)
+    _poll_requested = Signal()
 
     def __init__(
         self,
@@ -81,9 +68,12 @@ class DataWatcher(QObject):
         self._db_path = Path(db_path)
         self._poll_interval_ms = int(poll_interval_seconds * 1000)
         self._watch_dir: str | None = None
+        self._observer: Observer | PollingObserver | None = None
+        self._handler: _DbFileHandler | None = None
         self._poll_timer: QTimer | None = None
         self._debounce_timer: QTimer | None = None
         self._last_snapshot: tuple[list, list] | None = None
+        self._poll_requested.connect(self._on_poll_requested)
 
     def start(self):
         beans, deps = self._load_fresh()
@@ -96,8 +86,8 @@ class DataWatcher(QObject):
         self._debounce_timer.timeout.connect(self._check_for_changes)
 
         self._watch_dir = str(self._db_path.parent.resolve())
-        handler = _DbFileHandler(self._db_path, self._trigger_debounced_poll)
-        _acquire_observer(self._watch_dir, handler)
+        self._handler = _DbFileHandler(self._db_path, self._trigger_debounced_poll)
+        self._start_observer()
 
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(self._poll_interval_ms)
@@ -111,9 +101,9 @@ class DataWatcher(QObject):
         if self._debounce_timer is not None:
             self._debounce_timer.stop()
             self._debounce_timer = None
-        if self._watch_dir is not None:
-            _release_observer(self._watch_dir)
-            self._watch_dir = None
+        self._stop_observer()
+        self._handler = None
+        self._watch_dir = None
 
     def _load_fresh(self):
         """Open a fresh connection, read snapshot, close connection."""
@@ -124,11 +114,67 @@ class DataWatcher(QObject):
             store.close()
 
     def _trigger_debounced_poll(self):
+        self._poll_requested.emit()
+
+    @Slot()
+    def _on_poll_requested(self):
         timer = self._debounce_timer
         if timer is not None:
-            QTimer.singleShot(0, timer.start)
+            timer.start()
+
+    def _observer_factory(self, use_polling: bool = False):
+        if sys.platform == "darwin":
+            use_polling = True
+        if use_polling:
+            timeout_seconds = 0.25
+            return PollingObserver(timeout=timeout_seconds)
+        return Observer()
+
+    def _start_observer(self):
+        if self._watch_dir is None or self._handler is None:
+            return
+
+        for use_polling in (False, True):
+            observer = self._observer_factory(use_polling=use_polling)
+            try:
+                observer.schedule(self._handler, self._watch_dir, recursive=False)
+                observer.start()
+                self._observer = observer
+                if use_polling:
+                    log.warning(
+                        "native file observer unavailable for %s; using PollingObserver",
+                        self._db_path,
+                    )
+                return
+            except Exception:
+                mode = "PollingObserver" if use_polling else "native Observer"
+                log.exception("failed to start %s for %s", mode, self._db_path)
+                try:
+                    observer.stop()
+                    observer.join(timeout=1)
+                except Exception:
+                    pass
+
+        self._observer = None
+
+    def _stop_observer(self):
+        observer = self._observer
+        self._observer = None
+        if observer is None:
+            return
+        observer.stop()
+        observer.join()
+
+    def _ensure_observer_running(self):
+        observer = self._observer
+        if observer is None or observer.is_alive():
+            return
+        log.warning("file observer stopped for %s; restarting", self._db_path)
+        self._stop_observer()
+        self._start_observer()
 
     def _check_for_changes(self):
+        self._ensure_observer_running()
         try:
             beans, deps = self._load_fresh()
         except Exception:
