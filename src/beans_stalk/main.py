@@ -120,23 +120,26 @@ def launch_and_wait(app_path: Path, timeout: float = 10.0):
     )
 
 
+def resolve_beans_dir_path(beans_dir: str | None) -> str:
+    from beans.workspace import find_beans_dir
+
+    if beans_dir is None:
+        return str(find_beans_dir().resolve())
+
+    p = Path(beans_dir)
+    if p.is_dir() and (p / "beans.db").exists():
+        return str(p.resolve())
+    if p.name == "beans.db" and p.exists():
+        return str(p.parent.resolve())
+    return str(find_beans_dir(start=beans_dir).resolve())
+
+
 @app.command()
 def main(
     beans_dir: str = typer.Argument(None, help="Path to .beans directory or parent"),
 ):
     """Launch Beans Stalk DAG viewer."""
-    from beans.workspace import find_beans_dir
-
-    if beans_dir is None:
-        resolved = str(find_beans_dir())
-    else:
-        p = Path(beans_dir)
-        if p.is_dir() and (p / "beans.db").exists():
-            resolved = str(p)
-        elif p.name == "beans.db" and p.exists():
-            resolved = str(p.parent)
-        else:
-            resolved = str(find_beans_dir(start=beans_dir))
+    resolved = resolve_beans_dir_path(beans_dir)
 
     # Try sending to an already-running instance
     if try_send_to_running_instance(resolved):

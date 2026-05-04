@@ -99,6 +99,25 @@ class TestCliLaunchesApp:
         t.join()
         server.stop()
 
+    def test_main_resolves_relative_beans_dir_to_absolute(
+        self, tmp_beans_dir, monkeypatch
+    ):
+        from beans_stalk import main as main_mod
+
+        monkeypatch.chdir(tmp_beans_dir)
+        sent_paths = []
+        monkeypatch.setattr(
+            main_mod,
+            "try_send_to_running_instance",
+            lambda path: sent_paths.append(path) or True,
+        )
+
+        with pytest.raises(SystemExit) as excinfo:
+            main_mod.main(".")
+
+        assert excinfo.value.code == 0
+        assert sent_paths == [str(tmp_beans_dir.resolve())]
+
 
 class TestServerMode:
     def test_run_server_starts_ipc_without_window(self, sock_path, qapp):
