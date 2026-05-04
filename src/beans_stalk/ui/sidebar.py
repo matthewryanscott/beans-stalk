@@ -1,4 +1,5 @@
 import os
+import shlex
 import tempfile
 from pathlib import Path
 
@@ -161,7 +162,7 @@ class Sidebar(QWidget):
         body_header.setContentsMargins(0, 0, 0, 0)
         body_header.setSpacing(4)
         body_header.addWidget(QLabel("Body"))
-        editor_name = Path(self._editor_cmd).name if self._editor_cmd else None
+        editor_name = shlex.split(self._editor_cmd)[0].rsplit("/", 1)[-1] if self._editor_cmd else None
         self._edit_external_btn = QPushButton(f"Edit with {editor_name}")
         self._edit_external_btn.clicked.connect(self._on_edit_external)
         self._edit_external_btn.setVisible(bool(self._editor_cmd))
@@ -513,14 +514,9 @@ class Sidebar(QWidget):
 
         self._editor_process = QProcess(self)
         self._editor_process.finished.connect(self._on_editor_finished)
-        editor_name = Path(self._editor_cmd).name
-        # Editors that return immediately without --wait
-        wait_flag_editors = {"code", "code-insiders", "subl", "atom", "zed"}
-        args = []
-        if editor_name in wait_flag_editors:
-            args.append("--wait")
-        args.append(str(self._editor_tmp_path))
-        self._editor_process.start(self._editor_cmd, args)
+        # Run through shell so EDITOR="code -w" works correctly
+        shell_cmd = f"{self._editor_cmd} {shlex.quote(str(self._editor_tmp_path))}"
+        self._editor_process.start("/bin/sh", ["-c", shell_cmd])
 
     def _on_editor_finished(self):
         """Read back the temp file and update the body field."""
