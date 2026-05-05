@@ -9,7 +9,7 @@ description = "Visual DAG companion for the Beans task tracker"
 requires-python = ">=3.14"
 dependencies = [
     "pyside6",
-    "magic-beans",
+    "magic-beans>=0.7.0",
     "networkx",
     "watchdog",
     "tomli-w",

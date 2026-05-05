@@ -2,6 +2,10 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[options]
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer-span = "P7D"
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -42,7 +46,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "magic-beans" },
+    { name = "magic-beans", specifier = ">=0.7.0" },
     { name = "networkx" },
     { name = "pygraphviz" },
     { name = "pyside6" },
@@ -89,15 +93,15 @@ wheels = [
 
 [[package]]
 name = "magic-beans"
-version = "0.5.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/28/2f12e3598c1f41da847319fca21f945033d2833c6d11d3e6c022ec79c521/magic_beans-0.5.0.tar.gz", hash = "sha256:4b3053a63194f9145975957bb818b85803f3ee26ec9a67efb7f2fed1816e98a0", size = 15451, upload-time = "2026-03-19T01:30:12.248Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/f1/0dd568ab3a88dc00503917b6d809ebaa241806fced794fdd17b09e37b73b/magic_beans-0.7.0.tar.gz", hash = "sha256:5cacd02507e65bb379355aa2639ec1d5f4bb9da98f64d76ab86c81d84e19b115", size = 20004, upload-time = "2026-04-15T02:32:16.526Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/8c/6c69ea0f5e91a80bec5d50a41c1171b31a063c8780a677eb2b2eb7c7bf0b/magic_beans-0.5.0-py3-none-any.whl", hash = "sha256:a3a6134ae0bd9f22629a709ad276c435ad8eadd6932a4929886e52b854ee8395", size = 20027, upload-time = "2026-03-19T01:30:10.967Z" },
+    { url = "https://files.pythonhosted.org/packages/36/cf/e14330aabb84b5d2cbf6cec0f7bdf6597b07eaa0893e129b05d41becab81/magic_beans-0.7.0-py3-none-any.whl", hash = "sha256:0613d56831b89cc3b96c999388053b3efeb685b8a11af048ef52b4697d56f507", size = 23421, upload-time = "2026-04-15T02:32:15.251Z" },
 ]
 
 [[package]]
