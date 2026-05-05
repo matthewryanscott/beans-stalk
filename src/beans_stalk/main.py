@@ -137,9 +137,21 @@ def resolve_beans_dir_path(beans_dir: str | None) -> str:
 @app.command()
 def main(
     beans_dir: str = typer.Argument(None, help="Path to .beans directory or parent"),
+    wait: bool = typer.Option(
+        False,
+        "-w",
+        "--wait",
+        help="Run the app in the foreground; bypass any running instance and stay attached until the window closes.",
+    ),
 ):
     """Launch Beans Stalk DAG viewer."""
     resolved = resolve_beans_dir_path(beans_dir)
+
+    if wait:
+        from beans_stalk.app import run_app_foreground
+
+        run_app_foreground(resolved)
+        return
 
     # Try sending to an already-running instance
     if try_send_to_running_instance(resolved):

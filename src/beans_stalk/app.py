@@ -94,14 +94,15 @@ class StalkApp:
         """Stop the IPC server and clean up."""
         self._shutdown()
 
-    def run(self, initial_beans_dir: str | None = None):
-        """Create QApplication, start server, optionally open a window, enter event loop."""
+    def run(self, initial_beans_dir: str | None = None, start_ipc: bool = True):
+        """Create QApplication, optionally start IPC server, optionally open a window, enter event loop."""
         if self._qt_app is None:
             self._qt_app = QApplication(sys.argv)
         self._qt_app.setApplicationName("Beans Stalk")
         self._qt_app.setQuitOnLastWindowClosed(initial_beans_dir is not None)
 
-        self.start_server()
+        if start_ipc:
+            self.start_server()
 
         if initial_beans_dir is not None:
             self.open_beans_dir(initial_beans_dir)
@@ -126,6 +127,12 @@ def run_app(beans_dir: str):
     """Entry point called from main.py after IPC check."""
     app = StalkApp()
     app.run(beans_dir)
+
+
+def run_app_foreground(beans_dir: str):
+    """Foreground (--wait) entry point: run in-process without binding the IPC socket."""
+    app = StalkApp()
+    app.run(beans_dir, start_ipc=False)
 
 
 def run_server():
