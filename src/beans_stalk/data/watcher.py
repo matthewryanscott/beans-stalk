@@ -7,7 +7,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
-from beans_stalk.data.store import StalkStore
+from beans_stalk.data.store import load_snapshot_readonly
 
 log = logging.getLogger(__name__)
 
@@ -106,14 +106,19 @@ class DataWatcher(QObject):
         self._watch_dir = None
 
     def _load_fresh(self):
-        """Open a fresh connection, read snapshot, close connection."""
-        store = StalkStore(self._db_path)
-        try:
-            return store.load_snapshot()
-        finally:
-            store.close()
+        """Read snapshot via a lockless immutable=1 connection.
+
+        Avoids contending with the main StalkStore's EXCLUSIVE lock, and
+        works on virtiofs where WAL machinery is unavailable.
+        """
+        return load_snapshot_readonly(str(self._db_path))
 
     def _trigger_debounced_poll(self):
+        self._poll_requested.emit()
+
+    def request_poll(self):
+        """Public nudge — call right after a local write to refresh the UI
+        without waiting for the file-watch / poll cycle to fire."""
         self._poll_requested.emit()
 
     @Slot()

@@ -287,6 +287,8 @@ class MainWindow(QMainWindow):
                 self._store.add_dep(from_id, to_id)
         except Exception as e:
             self._sidebar.show_status(str(e))
+            return
+        self._watcher.request_poll()
 
     @Slot(str, str)
     def _on_dep_remove(self, from_id: str, to_id: str):
@@ -294,6 +296,8 @@ class MainWindow(QMainWindow):
             self._store.remove_dep(from_id, to_id)
         except Exception as e:
             self._sidebar.show_status(str(e))
+            return
+        self._watcher.request_poll()
 
     @Slot(str)
     def _on_delete_bean(self, bean_id: str):
@@ -326,6 +330,7 @@ class MainWindow(QMainWindow):
                 return
             self._scene.selected_id = None
             self._sidebar.clear_selection()
+            self._watcher.request_poll()
 
     @Slot(str, dict)
     def _on_save_bean(self, bean_id: str, fields: dict):
@@ -333,6 +338,8 @@ class MainWindow(QMainWindow):
             self._store.update_bean(bean_id, **fields)
         except Exception as e:
             self._sidebar.show_status(str(e))
+            return
+        self._watcher.request_poll()
 
     @Slot(str, str)
     def _on_claim_bean(self, bean_id: str, actor: str):
@@ -340,6 +347,8 @@ class MainWindow(QMainWindow):
             self._store.claim_bean(bean_id, actor)
         except Exception as e:
             self._sidebar.show_status(str(e))
+            return
+        self._watcher.request_poll()
 
     @Slot(str)
     def _on_release_bean(self, bean_id: str):
@@ -349,6 +358,8 @@ class MainWindow(QMainWindow):
             self._store.release_bean(bean_id, actor)
         except Exception as e:
             self._sidebar.show_status(str(e))
+            return
+        self._watcher.request_poll()
 
     @Slot(str, str)
     def _on_close_bean(self, bean_id: str, reason: str):
@@ -356,6 +367,8 @@ class MainWindow(QMainWindow):
             self._store.close_bean(bean_id, reason=reason or None)
         except Exception as e:
             self._sidebar.show_status(str(e))
+            return
+        self._watcher.request_poll()
 
     @Slot(dict)
     def _on_create_bean(self, fields: dict):
@@ -382,6 +395,7 @@ class MainWindow(QMainWindow):
         self._scene.selected_id = bean.id
         self._view.smooth_center_on_node(bean.id)
         self._sidebar.show_bean(bean, deps)
+        self._watcher.request_poll()
 
     @Slot(str, str)
     def _on_add_dep(self, from_id: str, to_id: str):
@@ -389,6 +403,8 @@ class MainWindow(QMainWindow):
             self._store.add_dep(from_id, to_id)
         except Exception as e:
             self._sidebar.show_status(str(e))
+            return
+        self._watcher.request_poll()
 
     def _on_editing_started(self):
         """Lock the UI while an external editor is open."""
